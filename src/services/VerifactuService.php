@@ -128,7 +128,7 @@ class VerifactuService
         $name = $invoice->issuerName;
         
         // 7. Wrap the signed XML with the proper structure using InvoiceSerializer
-        $wrappedDom = InvoiceSerializer::wrapXmlWithRegFactuStructure($signedDom, $nif, $name);
+        $wrappedDom = InvoiceSerializer::wrapXmlWithRegFactuStructure($signedDom, $nif, $name, $invoice->fechaFinVeriFactu ?? null);
         
         // Get XML without the XML declaration to avoid issues in SOAP body
         $dom_xpath = new \DOMXPath($wrappedDom);
@@ -205,7 +205,7 @@ TXT
         $name = $cancellation->issuerName; // Placeholder for cancellations
         
         // Wrap the XML with the proper structure using InvoiceSerializer
-        $wrappedDom = InvoiceSerializer::wrapXmlWithRegFactuStructure($cancellationDom, $nif, $name);
+        $wrappedDom = InvoiceSerializer::wrapXmlWithRegFactuStructure($cancellationDom, $nif, $name, $cancellation->fechaFinVeriFactu ?? null);
         
         // Get XML without the XML declaration to avoid issues in SOAP body
         $dom_xpath = new \DOMXPath($wrappedDom);

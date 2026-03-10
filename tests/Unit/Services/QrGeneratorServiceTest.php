@@ -56,6 +56,43 @@ class QrGeneratorServiceTest extends TestCase
     }
 
     /**
+     * Test that the QrGeneratorService::buildQrContent omits 'huella' when hash is not set.
+     * AEAT 2026: huella is only included when the invoice hash has been calculated.
+     */
+    public function testBuildQrContentWithoutHash(): void
+    {
+        $mockInvoiceRecord = $this->getMockBuilder(InvoiceRecord::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getInvoiceId'])
+            ->getMockForAbstractClass();
+
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2023-01-01';
+
+        $mockInvoiceRecord->method('getInvoiceId')->willReturn($invoiceId);
+        $mockInvoiceRecord->hash = null;
+
+        $reflectionClass = new \ReflectionClass(QrGeneratorService::class);
+        $method = $reflectionClass->getMethod('buildQrContent');
+        $method->setAccessible(true);
+
+        $baseUrl = 'https://example.com/verify';
+        $result = $method->invoke(null, $mockInvoiceRecord, $baseUrl);
+
+        // 'huella' must not appear in URL when hash is null
+        $this->assertStringNotContainsString('huella', $result);
+
+        $expectedParams = http_build_query([
+            'nif' => 'B12345678',
+            'num' => 'FACT-001',
+            'fecha' => '2023-01-01',
+        ]);
+        $this->assertEquals($baseUrl . '?' . $expectedParams, $result);
+    }
+
+    /**
      * Test that the QrGeneratorService::getFileExtension method returns the correct extension.
      */
     public function testGetFileExtension(): void

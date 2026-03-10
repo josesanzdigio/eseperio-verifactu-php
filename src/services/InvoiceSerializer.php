@@ -537,7 +537,7 @@ class InvoiceSerializer
         }
     }
 
-    public static function wrapXmlWithRegFactuStructure(\DOMDocument $doc, string $nif, string $name): \DOMDocument
+    public static function wrapXmlWithRegFactuStructure(\DOMDocument $doc, string $nif, string $name, ?string $fechaFinVeriFactu = null): \DOMDocument
     {
         $newDoc = new \DOMDocument('1.0', 'UTF-8');
         $newDoc->formatOutput = true;
@@ -556,11 +556,12 @@ class InvoiceSerializer
         $obligadoEmision->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $name));
         $obligadoEmision->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $nif));
 
-
-//        $remReq = $newDoc->createElementNS(self::SF_NAMESPACE, 'sf:RemisionRequerimiento');
-//        $remReq->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:RefRequerimiento', 'TEST' . date('YmdHis')));
-//        $remReq->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:FinRequerimiento', 'S'));
-//        $cabecera->appendChild($remReq);
+        // RemisionVoluntaria (optional) — supports FechaFinVeriFactu per AEAT validation 31.1.3
+        if (!empty($fechaFinVeriFactu)) {
+            $remisionVoluntaria = $newDoc->createElementNS(self::SF_NAMESPACE, 'sf:RemisionVoluntaria');
+            $remisionVoluntaria->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:FechaFinVeriFactu', (string) $fechaFinVeriFactu));
+            $cabecera->appendChild($remisionVoluntaria);
+        }
 
         $registroFactura = $newDoc->createElementNS(self::SFLR_NAMESPACE, 'sfLR:RegistroFactura');
         $root->appendChild($registroFactura);

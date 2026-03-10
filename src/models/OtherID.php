@@ -17,6 +17,10 @@ class OtherID extends Model
     /**
      * Country code (CodigoPais, optional)
      * ISO 3166-1 alpha-2 code (e.g., 'FR', 'DE', 'US').
+     *
+     * AEAT 2026 denomination note (v1.2.1, 23/02/2026):
+     * Netherlands must use code 'NL'. The AEAT updated the internal label from
+     * 'Holanda' to 'Países Bajos'; the ISO 3166-1 alpha-2 code 'NL' remains correct.
      * @var string|null
      */
     public $countryCode;

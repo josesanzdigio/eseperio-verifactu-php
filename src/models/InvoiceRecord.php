@@ -73,6 +73,15 @@ abstract class InvoiceRecord extends Model
     public $xmlSignature;
 
     /**
+     * End date for VERI*FACTU voluntary submission (FechaFinVeriFactu, optional).
+     * Must be in 'DD-MM-YYYY' format and represent December 31st of the current or previous year
+     * (e.g. '31-12-2025'). Used when voluntarily stopping VERI*FACTU submissions.
+     * Corresponds to AEAT validation 31.1.3.
+     * @var string|null
+     */
+    public $fechaFinVeriFactu;
+
+    /**
      * Get the invoice ID.
      * @return InvoiceId
      */
@@ -234,6 +243,16 @@ abstract class InvoiceRecord extends Model
             ['systemInfo', fn($value): bool|string => ($value instanceof ComputerSystem) ? true : 'Must be an instance of ComputerSystem.'],
             ['hashType', fn($value): bool|string => ($value instanceof HashType) ? true : 'Must be an instance of HashType.'],
             [['externalRef', 'xmlSignature'], fn($value): bool|string => (is_null($value) || is_string($value)) ? true : 'Must be string or null.'],
+            ['fechaFinVeriFactu', function ($value): bool|string {
+                if ($value === null) {
+                    return true;
+                }
+                // Must be 31-12-YYYY (December 31st) — AEAT validation 31.1.3
+                if (!preg_match('/^31-12-\d{4}$/', $value)) {
+                    return 'FechaFinVeriFactu must be in DD-MM-YYYY format and represent December 31st (e.g. 31-12-2025).';
+                }
+                return true;
+            }],
         ];
     }
 }

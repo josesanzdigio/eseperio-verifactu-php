@@ -107,6 +107,10 @@ class QrGeneratorService
     /**
      * Builds the QR content string according to AEAT specification.
      *
+     * The 'huella' (hash/fingerprint) parameter is included only when the invoice record
+     * has a calculated hash, as per AEAT VERI*FACTU specification. For standard VERI*FACTU
+     * invoices the hash must be set before generating the QR code.
+     *
      * @param string $baseVerificationUrl
      */
     protected static function buildQrContent(InvoiceRecord $record, $baseVerificationUrl): string
@@ -117,14 +121,17 @@ class QrGeneratorService
         $date = $invoiceId->issueDate;
         $hash = $record->hash;
 
-        $params = http_build_query([
+        $params = [
             'nif' => $nif,
             'num' => $series,
             'fecha' => $date,
-            'huella' => $hash,
-        ]);
+        ];
 
-        return rtrim($baseVerificationUrl, '?') . '?' . $params;
+        if (!empty($hash)) {
+            $params['huella'] = $hash;
+        }
+
+        return rtrim($baseVerificationUrl, '?') . '?' . http_build_query($params);
     }
 
     /**

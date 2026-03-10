@@ -286,6 +286,118 @@ class InvoiceSerializerTest extends TestCase
         $nombres = $wrapped->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'NombreRazon');
         $this->assertGreaterThanOrEqual(1, $nombres->length);
         $this->assertEquals('Test Name', $nombres->item(0)->textContent);
+
+        // Without FechaFinVeriFactu, RemisionVoluntaria must not be present
+        $remision = $wrapped->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'RemisionVoluntaria');
+        $this->assertEquals(0, $remision->length);
+    }
+
+    /**
+     * Test that wrapXmlWithRegFactuStructure correctly includes FechaFinVeriFactu
+     * when provided (AEAT validation 31.1.3).
+     */
+    public function testWrapXmlWithRegFactuStructureWithFechaFinVeriFactu(): void
+    {
+        $doc = new \DOMDocument('1.0', 'UTF-8');
+        $root = $doc->createElementNS(InvoiceSerializer::SF_NAMESPACE, 'sf:RegistroAlta');
+        $doc->appendChild($root);
+
+        $fechaFin = '31-12-2025';
+        $wrapped = InvoiceSerializer::wrapXmlWithRegFactuStructure($doc, '12345678Z', 'Test Name', $fechaFin);
+
+        // RemisionVoluntaria must be present
+        $remision = $wrapped->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'RemisionVoluntaria');
+        $this->assertEquals(1, $remision->length);
+
+        // FechaFinVeriFactu must contain the correct date
+        $fechaFinElements = $wrapped->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'FechaFinVeriFactu');
+        $this->assertEquals(1, $fechaFinElements->length);
+        $this->assertEquals($fechaFin, $fechaFinElements->item(0)->textContent);
+    }
+
+    /**
+     * Test that InvoiceRecord validates FechaFinVeriFactu format (AEAT 31.1.3).
+     * Must be 31-12-YYYY (December 31st).
+     */
+    public function testFechaFinVeriFactuValidation(): void
+    {
+        $invoice = $this->createBasicInvoiceSubmission();
+
+        // Valid: December 31st
+        $invoice->fechaFinVeriFactu = '31-12-2025';
+        $errors = $invoice->validate();
+        $hasError = (bool) array_filter(array_keys($errors), fn($k) => str_contains($k, 'fechaFinVeriFactu'));
+        $this->assertFalse($hasError, 'Valid FechaFinVeriFactu should not produce validation errors');
+
+        // Invalid: not December 31st
+        $invoice->fechaFinVeriFactu = '01-01-2025';
+        $errors = $invoice->validate();
+        $hasError = (bool) array_filter(array_keys($errors), fn($k) => str_contains($k, 'fechaFinVeriFactu'));
+        $this->assertTrue($hasError, 'Non-December-31 date should produce a validation error');
+
+        // Invalid: wrong format (ISO instead of DD-MM-YYYY)
+        $invoice->fechaFinVeriFactu = '2025-12-31';
+        $errors = $invoice->validate();
+        $hasError = (bool) array_filter(array_keys($errors), fn($k) => str_contains($k, 'fechaFinVeriFactu'));
+        $this->assertTrue($hasError, 'ISO format date should produce a validation error');
+
+        // Null is allowed (optional field)
+        $invoice->fechaFinVeriFactu = null;
+        $errors = $invoice->validate();
+        $hasError = (bool) array_filter(array_keys($errors), fn($k) => str_contains($k, 'fechaFinVeriFactu'));
+        $this->assertFalse($hasError, 'Null FechaFinVeriFactu should not produce validation errors');
+    }
+
+    /**
+     * Test that OtherID with Netherlands ('NL') country code is correctly serialised.
+     * AEAT v1.2.1 (23/02/2026): 'NL' remains the correct code for Netherlands
+     * (denomination changed from 'Holanda' to 'Países Bajos'; code unchanged).
+     */
+    public function testOtherIdNetherlandsCountryCode(): void
+    {
+        $invoice = $this->createBasicInvoiceSubmission();
+
+        // Replace the domestic recipient with a Netherlands (NL) foreign entity
+        $otherIdNL = new \eseperio\verifactu\models\OtherID();
+        $otherIdNL->countryCode = 'NL';
+        $otherIdNL->idType = '04'; // ID in country of residence
+        $otherIdNL->id = 'NL123456789B01';
+
+        $recipient = new LegalPerson();
+        $recipient->name = 'Dutch Company BV';
+        $recipient->setOtherId($otherIdNL);
+
+        // Reset recipients and add NL one
+        $invoice2 = $this->createBasicInvoiceSubmission();
+        // Build a fresh invoice without the existing recipient to avoid validation errors
+        $invoiceNL = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = '12345678Z';
+        $invoiceId->seriesNumber = 'TEST-NL-001';
+        $invoiceId->issueDate = '01-01-2023';
+        $invoiceNL->setInvoiceId($invoiceId);
+        $invoiceNL->issuerName = 'Test Company';
+        $invoiceNL->invoiceType = InvoiceType::STANDARD;
+        $invoiceNL->operationDescription = 'Test NL operation';
+        $invoiceNL->taxAmount = 21.00;
+        $invoiceNL->totalAmount = 121.00;
+        $invoiceNL->addRecipient($recipient);
+        $invoiceNL->hashType = \eseperio\verifactu\models\enums\HashType::SHA_256;
+        $invoiceNL->hash = str_repeat('b', 64);
+        $invoiceNL->recordTimestamp = date('Y-m-d\TH:i:s');
+        $invoiceNL->setAsFirstRecord();
+
+        $dom = InvoiceSerializer::toInvoiceXml($invoiceNL, false);
+
+        // Verify CodigoPais is 'NL'
+        $codigoPais = $dom->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'CodigoPais');
+        $this->assertGreaterThanOrEqual(1, $codigoPais->length);
+        $this->assertEquals('NL', $codigoPais->item(0)->textContent);
+
+        // Verify IDType is '04'
+        $idType = $dom->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'IDType');
+        $this->assertGreaterThanOrEqual(1, $idType->length);
+        $this->assertEquals('04', $idType->item(0)->textContent);
     }
 
     /**
