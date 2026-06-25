@@ -45,8 +45,8 @@ class PreviousInvoiceChaining extends Model
             [['issuerNif', 'seriesNumber', 'issueDate', 'hash'], 'required'],
             [['issuerNif', 'seriesNumber', 'issueDate', 'hash'], 'string'],
             ['issueDate', fn($value): bool|string =>
-                // Checks for format DD-MM-YYYY (simple regex)
-                (preg_match('/^\\d{2}-\\d{2}-\\d{4}$/', (string) $value)) ? true : 'Must be a valid date (YYYY-MM-DD).'],
+                // Checks for format YYYY-MM-DD (ISO 8601)
+                (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $value)) ? true : 'Must be a valid date (YYYY-MM-DD).'],
         ];
     }
 }

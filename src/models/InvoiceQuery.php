@@ -178,8 +178,16 @@ class InvoiceQuery extends Model
     {
         return [
             [['year', 'period'], 'required'],
-            [['year', 'period', 'seriesNumber', 'issueDate', 'externalRef'], 'string'],
+            [['year', 'period', 'seriesNumber', 'externalRef'], 'string'],
             [['counterparty', 'systemInfo', 'paginationKey'], 'array'],
+            ['issueDate', function ($value): bool|string {
+                if ($value === null) {
+                    return true;
+                }
+
+                // Checks for format YYYY-MM-DD (ISO 8601)
+                return (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) ? true : 'Must be a valid date (YYYY-MM-DD).';
+            }],
         ];
     }
 

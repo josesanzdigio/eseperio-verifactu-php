@@ -537,6 +537,29 @@ class InvoiceSubmission extends InvoiceRecord
                 // Checks for format YYYY-MM-DD (ISO 8601)
                 return (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) ? true : 'Must be a valid date (YYYY-MM-DD).';
             }],
+            ['rectificationData', function ($value): bool|string {
+                if ($value === null || $value === []) {
+                    return true;
+                }
+
+                foreach (['rectified', 'substituted'] as $group) {
+                    if (empty($value[$group]) || !is_array($value[$group])) {
+                        continue;
+                    }
+
+                    foreach ($value[$group] as $invoice) {
+                        if (!is_array($invoice) || !isset($invoice['issueDate'])) {
+                            continue;
+                        }
+
+                        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $invoice['issueDate'])) {
+                            return 'Rectification issue dates must be in YYYY-MM-DD format.';
+                        }
+                    }
+                }
+
+                return true;
+            }],
             // New rule to validate the issue date format
             ['invoiceId', function ($value): bool|string {
                 if ($value === null) {

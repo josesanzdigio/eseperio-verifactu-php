@@ -484,6 +484,7 @@ class InvoiceSerializerTest extends TestCase
         $query->seriesNumber = 'TEST001';
         $query->issueDate = '2023-01-01';
         $query->externalRef = 'TEST-REF-001';
+        $query->setIssuerparty('12345678Z', 'Test Company');
 
         // Set counterparty
         $query->setCounterparty('87654321X', 'Test Counterparty');
