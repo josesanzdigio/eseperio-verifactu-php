@@ -80,6 +80,7 @@ class QrGeneratorService
      * @param string $dest Destination type (file or string)
      * @param int $size Resolution of the QR code
      * @param string $engine Renderer to use (gd, imagick, svg)
+     * @param float|null $totalAmount Total invoice amount (ImporteTotal); included in QR only when provided
      * @return string QR image data or file path
      * @throws \RuntimeException
      */
@@ -88,9 +89,10 @@ class QrGeneratorService
         $baseVerificationUrl,
         $dest = self::DESTINATION_STRING,
         $size = 300,
-        $engine = self::RENDERER_GD
+        $engine = self::RENDERER_GD,
+        ?float $totalAmount = null
     ) {
-        $qrContent = self::buildQrContent($record, $baseVerificationUrl);
+        $qrContent = self::buildQrContent($record, $baseVerificationUrl, $totalAmount);
         $writer = self::createWriter($engine, $size);
         $qrData = $writer->writeString($qrContent);
 
@@ -105,33 +107,72 @@ class QrGeneratorService
     }
 
     /**
-     * Builds the QR content string according to AEAT specification.
+     * Builds the QR content string according to the AEAT VERI*FACTU QR specification.
      *
-     * The 'huella' (hash/fingerprint) parameter is included only when the invoice record
-     * has a calculated hash, as per AEAT VERI*FACTU specification. For standard VERI*FACTU
-     * invoices the hash must be set before generating the QR code.
+     * AEAT-compliant parameter contract:
+     * - `nif`      — issuer NIF (mandatory)
+     * - `numserie` — invoice series + number (mandatory; replaces legacy `num`)
+     * - `fecha`    — issue date in DD-MM-YYYY format (mandatory; QR-only conversion)
+     * - `importe`  — total invoice amount (mandatory for verifiable invoices; omitted when null)
+     * - `huella`   — SHA-256 hash/fingerprint (optional; included only when hash is set)
      *
-     * @param string $baseVerificationUrl
+     * `formato=json` MUST NOT appear in the QR URL per AEAT specification.
+     *
+     * @param string     $baseVerificationUrl Base URL for AEAT invoice verification
+     * @param float|null $totalAmount         Total invoice amount (ImporteTotal); omitted when null
      */
-    protected static function buildQrContent(InvoiceRecord $record, $baseVerificationUrl): string
-    {
+    protected static function buildQrContent(
+        InvoiceRecord $record,
+        $baseVerificationUrl,
+        ?float $totalAmount = null
+    ): string {
         $invoiceId = $record->getInvoiceId();
-        $nif = $invoiceId->issuerNif;
+        $nif    = $invoiceId->issuerNif;
         $series = $invoiceId->seriesNumber;
-        $date = $invoiceId->issueDate;
-        $hash = $record->hash;
+        $hash   = $record->hash;
+
+        // Reformat date from internal YYYY-MM-DD to the AEAT-mandated DD-MM-YYYY.
+        // This conversion is scoped to QR output only; the XML serializer is untouched.
+        $date = self::reformatDateForQr($invoiceId->issueDate);
 
         $params = [
-            'nif' => $nif,
-            'num' => $series,
-            'fecha' => $date,
+            'nif'      => $nif,
+            'numserie' => $series,
+            'fecha'    => $date,
         ];
+
+        if ($totalAmount !== null) {
+            $params['importe'] = $totalAmount;
+        }
 
         if (!empty($hash)) {
             $params['huella'] = $hash;
         }
 
         return rtrim($baseVerificationUrl, '?') . '?' . http_build_query($params);
+    }
+
+    /**
+     * Converts a date string from YYYY-MM-DD (internal ISO format) to DD-MM-YYYY
+     * as required by the AEAT VERI*FACTU QR specification.
+     *
+     * This method is intentionally scoped to QR URL generation only.
+     * The XML serializer performs its own date conversion independently.
+     *
+     * @param string $isoDate Date in YYYY-MM-DD format
+     * @return string Date in DD-MM-YYYY format
+     */
+    protected static function reformatDateForQr(string $isoDate): string
+    {
+        $parts = explode('-', $isoDate);
+
+        if (count($parts) !== 3) {
+            return $isoDate;
+        }
+
+        [$year, $month, $day] = $parts;
+
+        return $day . '-' . $month . '-' . $year;
     }
 
     /**

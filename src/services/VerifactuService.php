@@ -266,10 +266,17 @@ TXT
     /**
      * Generates a QR code for the provided invoice.
      *
-     * @param string|null $baseUrl
+     * For `InvoiceSubmission` records the mandatory AEAT `importe` parameter is
+     * resolved from `$record->totalAmount` and threaded into QR generation.
+     * For all other record types (e.g. `InvoiceCancellation`) no amount is
+     * synthesised — `importe` is simply omitted from the QR URL.
+     *
+     * The configured `QR_VERIFICATION_URL` (production or test endpoint) is used
+     * as the base URL and remains unchanged by this method.
+     *
      * @param string $destination Destination type (file or string)
-     * @param int $size Resolution of the QR code
-     * @param string $engine Renderer to use (gd, imagick, svg)
+     * @param int    $size        Resolution of the QR code
+     * @param string $engine      Renderer to use (gd, imagick, svg)
      * @return string QR image data or file path
      */
     public static function generateInvoiceQr(
@@ -281,7 +288,11 @@ TXT
     {
         $baseUrl = self::getConfig(self::QR_VERIFICATION_URL);
 
-        return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine);
+        // Resolve the mandatory AEAT `importe` parameter only for invoice submissions.
+        // Cancellations and other non-verifiable records carry no ImporteTotal.
+        $totalAmount = ($record instanceof InvoiceSubmission) ? (float) $record->totalAmount : null;
+
+        return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $totalAmount);
     }
 
     // The XML helper methods (wrapXmlWithRegFactuStructure, buildInvoiceXml, buildCancellationXml, buildQueryXml)

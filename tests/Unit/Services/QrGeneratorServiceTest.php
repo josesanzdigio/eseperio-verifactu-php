@@ -8,271 +8,397 @@ use BaconQrCode\Writer;
 use PHPUnit\Framework\MockObject\MockObject;
 use eseperio\verifactu\models\InvoiceId;
 use eseperio\verifactu\models\InvoiceRecord;
+use eseperio\verifactu\models\InvoiceSubmission;
 use eseperio\verifactu\services\QrGeneratorService;
+use eseperio\verifactu\services\VerifactuService;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * Unit tests for QrGeneratorService.
+ *
+ * Validates the AEAT VERI*FACTU QR URL contract:
+ * - Uses `numserie` (not legacy `num`)
+ * - Emits `fecha` as DD-MM-YYYY
+ * - Emits `importe` as a decimal amount when a total amount is provided
+ * - Omits `importe` when no total amount is available
+ * - Keeps `huella` optional (present only when hash is set)
+ * - Never emits `formato=json`
+ */
 class QrGeneratorServiceTest extends TestCase
 {
+    // -------------------------------------------------------------------------
+    // Task 1.1 — Verifiable invoice: AEAT parameter contract (RED)
+    // -------------------------------------------------------------------------
+
     /**
-     * Test that the QrGeneratorService::buildQrContent method builds the correct URL.
+     * AEAT VERI*FACTU QR spec: a verifiable invoice QR URL must contain
+     * nif, numserie, fecha (DD-MM-YYYY), importe as a decimal amount using `.` as separator, and optionally huella.
+     * It must NOT contain legacy `num` or `formato=json`.
      */
-    public function testBuildQrContent(): void
+    public function testBuildQrContentEmitsAeatCompliantParams(): void
     {
-        // Create a mock InvoiceRecord
-        $mockInvoiceRecord = $this->getMockBuilder(InvoiceRecord::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['getInvoiceId'])
-            ->getMockForAbstractClass();
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-24', 'abcdef1234567890');
 
-        // Create an InvoiceId
-        $invoiceId = new InvoiceId();
-        $invoiceId->issuerNif = 'B12345678';
-        $invoiceId->seriesNumber = 'FACT-001';
-        $invoiceId->issueDate = '2023-01-01';
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.00);
 
-        // Set up the mock InvoiceRecord
-        $mockInvoiceRecord->method('getInvoiceId')->willReturn($invoiceId);
-        $mockInvoiceRecord->hash = 'abcdef1234567890';
+        // Must use numserie, not num
+        $this->assertStringContainsString('numserie=', $result, 'QR URL must contain numserie parameter');
+        $this->assertStringNotContainsString('num=', $result, 'QR URL must NOT contain legacy num parameter');
 
-        // Use reflection to access the protected method
-        $reflectionClass = new \ReflectionClass(QrGeneratorService::class);
-        $method = $reflectionClass->getMethod('buildQrContent');
-        $method->setAccessible(true);
+        // fecha must be DD-MM-YYYY
+        $this->assertStringContainsString('fecha=24-06-2026', $result, 'fecha must be in DD-MM-YYYY format');
+        $this->assertStringNotContainsString('fecha=2026-06-24', $result, 'fecha must NOT be in YYYY-MM-DD format');
 
-        // Call the method
-        $baseUrl = 'https://example.com/verify';
-        $result = $method->invoke(null, $mockInvoiceRecord, $baseUrl);
+        // importe must be present when amount is provided
+        $this->assertStringContainsString('importe=121', $result, 'importe must be present for verifiable invoices');
 
-        // Verify the result
-        $expectedParams = http_build_query([
-            'nif' => 'B12345678',
-            'num' => 'FACT-001',
-            'fecha' => '2023-01-01',
-            'huella' => 'abcdef1234567890',
+        // nif must still be present
+        $this->assertStringContainsString('nif=B12345678', $result, 'nif must be present');
+
+        // formato=json must never appear
+        $this->assertStringNotContainsString('formato', $result, 'formato=json must NOT appear in QR URL');
+    }
+
+    /**
+     * When a hash is set, huella must appear alongside the mandatory params.
+     */
+    public function testBuildQrContentIncludesHuellaWhenHashIsSet(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-24', 'abcdef1234567890');
+
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.00);
+
+        $this->assertStringContainsString('huella=abcdef1234567890', $result, 'huella must be present when hash is set');
+
+        // Mandatory params must still be present alongside huella
+        $this->assertStringContainsString('numserie=', $result);
+        $this->assertStringContainsString('importe=121', $result);
+    }
+
+    /**
+     * Date and amount contract: a specific date/amount pair must round-trip
+     * to an AEAT-valid QR format.
+     *
+     * Spec scenario: "Given a verifiable invoice dated 2026-06-24 with total amount 121.4
+     * When its QR URL is generated
+     * Then fecha=24-06-2026 AND importe=121.4"
+     */
+    public function testBuildQrContentDateAndAmountMatchAeatContract(): void
+    {
+        $record = $this->makeRecord('A00000001', 'SER/2026/001', '2026-06-24', null);
+
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.4);
+
+        $this->assertStringContainsString('fecha=24-06-2026', $result);
+        $this->assertStringContainsString('importe=121.4', $result);
+        $this->assertStringNotContainsString('huella', $result, 'huella must be absent when hash is null');
+    }
+
+    /**
+     * Public QR generation path must thread InvoiceSubmission::$totalAmount into the QR payload.
+     */
+    public function testVerifactuServiceGenerateInvoiceQrThreadsSubmissionTotalAmountIntoQrPayload(): void
+    {
+        VerifactuService::config([
+            VerifactuService::QR_VERIFICATION_URL => 'https://example.com/verify',
         ]);
-        $expected = $baseUrl . '?' . $expectedParams;
+
+        $submission = $this->makeSubmissionRecord(121.4, 'abcdef1234567890');
+
+        $serviceQr = VerifactuService::generateInvoiceQr(
+            $submission,
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG
+        );
+
+        $expectedQr = QrGeneratorService::generateQr(
+            $submission,
+            'https://example.com/verify',
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG,
+            121.4
+        );
+
+        $qrWithoutAmount = QrGeneratorService::generateQr(
+            $submission,
+            'https://example.com/verify',
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG,
+            null
+        );
+
+        $this->assertSame($expectedQr, $serviceQr);
+        $this->assertNotSame($qrWithoutAmount, $serviceQr);
+        $this->assertStringContainsString('<svg', $serviceQr);
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 1.2 — Null-amount path: huella optional, importe omitted (RED)
+    // -------------------------------------------------------------------------
+
+    /**
+     * When no total amount is available (e.g. non-submission / cancellation-style record),
+     * importe must be omitted — not emitted as an empty value.
+     * huella is still included if a hash is set.
+     */
+    public function testBuildQrContentOmitsImporteWhenAmountIsNull(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', 'abcdef1234567890');
+
+        // Pass null for totalAmount — simulates a non-submission or cancellation record
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', null);
+
+        $this->assertStringNotContainsString('importe', $result, 'importe must be absent when totalAmount is null');
+
+        // huella should still be present (hash was set)
+        $this->assertStringContainsString('huella=abcdef1234567890', $result);
+
+        // numserie must be present (AEAT param name)
+        $this->assertStringContainsString('numserie=', $result);
+
+        // no legacy num
+        $this->assertStringNotContainsString('num=', $result);
+    }
+
+    /**
+     * When both hash and amount are absent, only the mandatory
+     * nif / numserie / fecha params are emitted.
+     */
+    public function testBuildQrContentWithNoHashAndNoAmount(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', null);
+
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', null);
+
+        $this->assertStringNotContainsString('huella', $result);
+        $this->assertStringNotContainsString('importe', $result);
+        $this->assertStringContainsString('nif=B12345678', $result);
+        $this->assertStringContainsString('numserie=FACT-001', $result);
+        $this->assertStringContainsString('fecha=01-01-2023', $result);
+        $this->assertStringNotContainsString('num=', $result);
+        $this->assertStringNotContainsString('formato', $result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 3.1 — Legacy assertions removed; full URL shape verified
+    // -------------------------------------------------------------------------
+
+    /**
+     * Full URL shape: base URL + ? + params in correct order and encoding.
+     * Verifies the exact AEAT-compliant URL built for a known input set.
+     */
+    public function testBuildQrContentProducesCorrectFullUrl(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', null);
+
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', null);
+
+        $expectedParams = http_build_query([
+            'nif'      => 'B12345678',
+            'numserie' => 'FACT-001',
+            'fecha'    => '01-01-2023',
+        ]);
+        $expected = 'https://example.com/verify?' . $expectedParams;
 
         $this->assertEquals($expected, $result);
     }
 
     /**
-     * Test that the QrGeneratorService::buildQrContent omits 'huella' when hash is not set.
-     * AEAT 2026: huella is only included when the invoice hash has been calculated.
+     * Full URL shape with hash but no amount.
      */
-    public function testBuildQrContentWithoutHash(): void
+    public function testBuildQrContentWithHashButNoAmount(): void
     {
-        $mockInvoiceRecord = $this->getMockBuilder(InvoiceRecord::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['getInvoiceId'])
-            ->getMockForAbstractClass();
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', 'abcdef1234567890');
 
-        $invoiceId = new InvoiceId();
-        $invoiceId->issuerNif = 'B12345678';
-        $invoiceId->seriesNumber = 'FACT-001';
-        $invoiceId->issueDate = '2023-01-01';
-
-        $mockInvoiceRecord->method('getInvoiceId')->willReturn($invoiceId);
-        $mockInvoiceRecord->hash = null;
-
-        $reflectionClass = new \ReflectionClass(QrGeneratorService::class);
-        $method = $reflectionClass->getMethod('buildQrContent');
-        $method->setAccessible(true);
-
-        $baseUrl = 'https://example.com/verify';
-        $result = $method->invoke(null, $mockInvoiceRecord, $baseUrl);
-
-        // 'huella' must not appear in URL when hash is null
-        $this->assertStringNotContainsString('huella', $result);
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', null);
 
         $expectedParams = http_build_query([
-            'nif' => 'B12345678',
-            'num' => 'FACT-001',
-            'fecha' => '2023-01-01',
+            'nif'      => 'B12345678',
+            'numserie' => 'FACT-001',
+            'fecha'    => '01-01-2023',
+            'huella'   => 'abcdef1234567890',
         ]);
-        $this->assertEquals($baseUrl . '?' . $expectedParams, $result);
+        $expected = 'https://example.com/verify?' . $expectedParams;
+
+        $this->assertEquals($expected, $result);
     }
 
+    // -------------------------------------------------------------------------
+    // Renderer and writer tests (unchanged — verify infrastructure only)
+    // -------------------------------------------------------------------------
+
     /**
-     * Test that the QrGeneratorService::getFileExtension method returns the correct extension.
+     * Test that getFileExtension returns the correct extension.
      */
     public function testGetFileExtension(): void
     {
-        // Use reflection to access the protected method
         $reflectionClass = new \ReflectionClass(QrGeneratorService::class);
         $method = $reflectionClass->getMethod('getFileExtension');
         $method->setAccessible(true);
 
-        // Test GD renderer
-        $result = $method->invoke(null, QrGeneratorService::RENDERER_GD);
-        $this->assertEquals('.png', $result);
-
-        // Test Imagick renderer
-        $result = $method->invoke(null, QrGeneratorService::RENDERER_IMAGICK);
-        $this->assertEquals('.png', $result);
-
-        // Test SVG renderer
-        $result = $method->invoke(null, QrGeneratorService::RENDERER_SVG);
-        $this->assertEquals('.svg', $result);
-
-        // Test default case
-        $result = $method->invoke(null, 'unknown');
-        $this->assertEquals('.png', $result);
+        $this->assertEquals('.png', $method->invoke(null, QrGeneratorService::RENDERER_GD));
+        $this->assertEquals('.png', $method->invoke(null, QrGeneratorService::RENDERER_IMAGICK));
+        $this->assertEquals('.svg', $method->invoke(null, QrGeneratorService::RENDERER_SVG));
+        $this->assertEquals('.png', $method->invoke(null, 'unknown'));
     }
 
     /**
-     * Test that the QrGeneratorService::createWriter method creates the correct writer.
+     * Test that createWriter creates the correct writer.
      */
     public function testCreateWriter(): void
     {
-        // Use reflection to access the protected method
         $reflectionClass = new \ReflectionClass(QrGeneratorService::class);
         $method = $reflectionClass->getMethod('createWriter');
         $method->setAccessible(true);
 
-        // Test GD renderer
         $writer = $method->invoke(null, QrGeneratorService::RENDERER_GD, 300);
         $this->assertInstanceOf(Writer::class, $writer);
 
-        // Test Imagick renderer
         if (!extension_loaded('imagick')) {
             $this->markTestSkipped('Imagick extension is not installed; skipping Imagick renderer test. Install ext-imagick to run this part.');
         }
         $writer = $method->invoke(null, QrGeneratorService::RENDERER_IMAGICK, 300);
         $this->assertInstanceOf(Writer::class, $writer);
 
-        // Test SVG renderer
         $writer = $method->invoke(null, QrGeneratorService::RENDERER_SVG, 300);
         $this->assertInstanceOf(Writer::class, $writer);
 
-        // Test invalid renderer
         $this->expectException(\RuntimeException::class);
         $method->invoke(null, 'invalid', 300);
     }
 
     /**
-     * Test the main generateQr method with default parameters.
+     * generateQr returns non-empty binary string with default parameters.
      */
     public function testGenerateQrWithDefaultParameters(): void
     {
-        // Create a mock InvoiceRecord
-        $mockInvoiceRecord = $this->createMockInvoiceRecord();
+        $result = QrGeneratorService::generateQr(
+            $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', 'abcdef1234567890'),
+            'https://example.com/verify'
+        );
 
-        // Call the method with default parameters
-        $baseUrl = 'https://example.com/verify';
-        $result = QrGeneratorService::generateQr($mockInvoiceRecord, $baseUrl);
-
-        // Verify the result is a string (binary data)
         $this->assertIsString($result);
-        // Verify it's not empty
         $this->assertNotEmpty($result);
     }
 
     /**
-     * Test the generateQr method with file destination.
+     * generateQr saves to file when DESTINATION_FILE is requested.
      */
     public function testGenerateQrWithFileDestination(): void
     {
-        // Create a mock InvoiceRecord
-        $mockInvoiceRecord = $this->createMockInvoiceRecord();
-
-        // Call the method with file destination
-        $baseUrl = 'https://example.com/verify';
         $result = QrGeneratorService::generateQr(
-            $mockInvoiceRecord,
-            $baseUrl,
+            $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', 'abcdef1234567890'),
+            'https://example.com/verify',
             QrGeneratorService::DESTINATION_FILE
         );
 
-        // Verify the result is a string (file path)
         $this->assertIsString($result);
-        // Verify it's a file path
         $this->assertStringContainsString('/qr_', $result);
         $this->assertStringEndsWith('.png', $result);
-        // Verify the file exists
         $this->assertFileExists($result);
 
-        // Clean up
         if (file_exists($result)) {
             unlink($result);
         }
     }
 
     /**
-     * Test the generateQr method with SVG renderer.
+     * generateQr with SVG renderer produces SVG markup.
      */
     public function testGenerateQrWithSvgRenderer(): void
     {
-        // Create a mock InvoiceRecord
-        $mockInvoiceRecord = $this->createMockInvoiceRecord();
-
-        // Call the method with SVG renderer
-        $baseUrl = 'https://example.com/verify';
         $result = QrGeneratorService::generateQr(
-            $mockInvoiceRecord,
-            $baseUrl,
+            $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', 'abcdef1234567890'),
+            'https://example.com/verify',
             QrGeneratorService::DESTINATION_STRING,
             300,
             QrGeneratorService::RENDERER_SVG
         );
 
-        // Verify the result is a string (SVG data)
         $this->assertIsString($result);
-        // Verify it contains SVG tags
         $this->assertStringContainsString('<svg', $result);
         $this->assertStringContainsString('</svg>', $result);
     }
 
     /**
-     * Test the generateQr method with different resolutions.
+     * Larger resolution produces larger output.
      */
     public function testGenerateQrWithDifferentResolutions(): void
     {
-        // Create a mock InvoiceRecord
-        $mockInvoiceRecord = $this->createMockInvoiceRecord();
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', 'abcdef1234567890');
         $baseUrl = 'https://example.com/verify';
 
-        // Generate QR with small resolution
-        $smallQr = QrGeneratorService::generateQr(
-            $mockInvoiceRecord,
-            $baseUrl,
-            QrGeneratorService::DESTINATION_STRING,
-            100
-        );
+        $smallQr = QrGeneratorService::generateQr($record, $baseUrl, QrGeneratorService::DESTINATION_STRING, 100);
+        $largeQr = QrGeneratorService::generateQr($record, $baseUrl, QrGeneratorService::DESTINATION_STRING, 300);
 
-        // Generate QR with large resolution
-        $largeQr = QrGeneratorService::generateQr(
-            $mockInvoiceRecord,
-            $baseUrl,
-            QrGeneratorService::DESTINATION_STRING,
-            300
-        );
-
-        // Verify both are strings
         $this->assertIsString($smallQr);
         $this->assertIsString($largeQr);
-
-        // The larger resolution should produce a larger file
         $this->assertGreaterThan(strlen($smallQr), strlen($largeQr));
     }
 
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
     /**
-     * Helper method to create a mock InvoiceRecord.
+     * Build a mock InvoiceRecord with the given field values.
      */
-    private function createMockInvoiceRecord(): MockObject
-    {
-        $mockInvoiceRecord = $this->getMockBuilder(InvoiceRecord::class)
+    private function makeRecord(
+        string $nif,
+        string $seriesNumber,
+        string $issueDate,
+        ?string $hash
+    ): MockObject {
+        $mock = $this->getMockBuilder(InvoiceRecord::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['getInvoiceId'])
             ->getMockForAbstractClass();
 
         $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif    = $nif;
+        $invoiceId->seriesNumber = $seriesNumber;
+        $invoiceId->issueDate    = $issueDate;
+
+        $mock->method('getInvoiceId')->willReturn($invoiceId);
+        $mock->hash = $hash;
+
+        return $mock;
+    }
+
+    /**
+     * Build a concrete InvoiceSubmission for public-path QR generation tests.
+     */
+    private function makeSubmissionRecord(float $totalAmount, ?string $hash): InvoiceSubmission
+    {
+        $submission = new InvoiceSubmission();
+
+        $invoiceId = new InvoiceId();
         $invoiceId->issuerNif = 'B12345678';
         $invoiceId->seriesNumber = 'FACT-001';
-        $invoiceId->issueDate = '2023-01-01';
+        $invoiceId->issueDate = '2026-06-24';
 
-        $mockInvoiceRecord->method('getInvoiceId')->willReturn($invoiceId);
-        $mockInvoiceRecord->hash = 'abcdef1234567890';
+        $submission->setInvoiceId($invoiceId);
+        $submission->totalAmount = $totalAmount;
+        $submission->hash = $hash;
 
-        return $mockInvoiceRecord;
+        return $submission;
+    }
+
+    /**
+     * Invoke the protected buildQrContent method via reflection.
+     */
+    private function invokeBuildQrContent(
+        InvoiceRecord $record,
+        string $baseUrl,
+        ?float $totalAmount
+    ): string {
+        $rc     = new \ReflectionClass(QrGeneratorService::class);
+        $method = $rc->getMethod('buildQrContent');
+        $method->setAccessible(true);
+
+        return (string) $method->invoke(null, $record, $baseUrl, $totalAmount);
     }
 }
