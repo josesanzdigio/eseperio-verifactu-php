@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace eseperio\verifactu\tests\Unit;
 
 use BaconQrCode\Writer;
+use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\MockObject;
 use eseperio\verifactu\models\InvoiceId;
 use eseperio\verifactu\models\InvoiceRecord;
@@ -92,6 +93,17 @@ class QrGeneratorServiceTest extends TestCase
         $this->assertStringContainsString('fecha=24-06-2026', $result);
         $this->assertStringContainsString('importe=121.4', $result);
         $this->assertStringNotContainsString('huella', $result, 'huella must be absent when hash is null');
+    }
+
+    public function testBuildQrContentNormalizesDateTimeIssueDate(): void
+    {
+        $record = $this->makeRecord('A00000001', 'SER/2026/001', '2026-06-24', null);
+        $record->getInvoiceId()->issueDate = new DateTimeImmutable('2026-06-24 14:00:00');
+
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.4);
+
+        $this->assertStringContainsString('fecha=24-06-2026', $result);
+        $this->assertStringNotContainsString('fecha=2026-06-24', $result);
     }
 
     /**

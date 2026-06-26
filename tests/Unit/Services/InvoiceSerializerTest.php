@@ -2,6 +2,7 @@
 
 namespace eseperio\verifactu\tests\Unit\Services;
 
+use DateTimeImmutable;
 use eseperio\verifactu\models\InvoiceCancellation;
 use eseperio\verifactu\models\InvoiceId;
 use eseperio\verifactu\models\InvoiceQuery;
@@ -251,6 +252,35 @@ class InvoiceSerializerTest extends TestCase
             // If validation fails, the test should fail
             $this->fail('XML validation failed: ' . $e->getMessage());
         }
+    }
+
+    public function testSerializerNormalizesDateTimeInputs(): void
+    {
+        $invoice = $this->createBasicInvoiceSubmission();
+        $invoice->getInvoiceId()->issueDate = new DateTimeImmutable('2023-01-01 12:34:56');
+        $invoice->operationDate = new DateTimeImmutable('2023-01-02 08:00:00');
+        $invoice->setRectificationData([
+            'rectified' => [[
+                'issuerNif' => '12345678Z',
+                'seriesNumber' => 'PREV-001',
+                'issueDate' => new DateTimeImmutable('2022-12-31 00:00:00'),
+            ]],
+        ]);
+
+        $dom = InvoiceSerializer::toInvoiceXml($invoice, false);
+
+        $issueDates = $dom->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'FechaExpedicionFactura');
+        $this->assertSame('01-01-2023', $issueDates->item(0)->textContent);
+        $this->assertSame('31-12-2022', $issueDates->item(1)->textContent);
+
+        $operationDates = $dom->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'FechaOperacion');
+        $this->assertSame('02-01-2023', $operationDates->item(0)->textContent);
+
+        $query = $this->createBasicInvoiceQuery();
+        $query->issueDate = new DateTimeImmutable('2023-01-03 10:00:00');
+        $queryDom = InvoiceSerializer::toQueryXml($query, false);
+        $queryIssueDates = $queryDom->getElementsByTagNameNS(InvoiceSerializer::SF_NAMESPACE, 'FechaExpedicionFactura');
+        $this->assertSame('03-01-2023', $queryIssueDates->item(0)->textContent);
     }
 
     /**

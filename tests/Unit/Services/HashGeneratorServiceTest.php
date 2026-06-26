@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace eseperio\verifactu\tests\Unit;
 
+use DateTimeImmutable;
 use eseperio\verifactu\models\Chaining;
 use eseperio\verifactu\models\ComputerSystem;
 use eseperio\verifactu\models\enums\HashType;
@@ -87,6 +88,18 @@ class HashGeneratorServiceTest extends TestCase
         $this->assertNotEmpty($hash, 'Hash should not be empty');
         $this->assertEquals(64, strlen($hash), 'Hex-encoded SHA-256 hash should be 64 characters long');
         $this->assertMatchesRegularExpression('/^[A-F0-9]{64}$/', $hash, 'Hash should be a valid uppercase hexadecimal string');
+    }
+
+    public function testHashNormalizesDateTimeIssueDate(): void
+    {
+        $invoice = $this->createTestInvoice();
+        $invoice->getInvoiceId()->issueDate = new DateTimeImmutable('2023-01-01 12:34:56');
+
+        $hash = HashGeneratorService::generate($invoice);
+
+        $this->assertSame('2023-01-01', $invoice->getInvoiceId()->getIssueDate());
+        $this->assertEquals(64, strlen($hash));
+        $this->assertMatchesRegularExpression('/^[A-F0-9]{64}$/', $hash);
     }
     
     /**

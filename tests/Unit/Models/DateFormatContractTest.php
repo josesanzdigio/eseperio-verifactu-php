@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace eseperio\verifactu\tests\Unit\Models;
 
+use DateTimeImmutable;
 use eseperio\verifactu\models\InvoiceId;
 use eseperio\verifactu\models\InvoiceSubmission;
 use eseperio\verifactu\models\InvoiceQuery;
@@ -232,5 +233,35 @@ class DateFormatContractTest extends TestCase
         $errors = $submission->validate();
         $this->assertNotEmpty($errors, 'InvoiceSubmission should reject DD-MM-YYYY rectification issueDate');
         $this->assertArrayHasKey(InvoiceSubmission::class . '::$rectificationData', $errors);
+    }
+
+    public function testDateTimeInputsAreNormalizedToIsoContract(): void
+    {
+        $date = new DateTimeImmutable('2023-01-15 09:30:00');
+
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = $date;
+        $this->assertSame('2023-01-15', $invoiceId->getIssueDate());
+        $this->assertEmpty($invoiceId->validate());
+
+        $query = new InvoiceQuery();
+        $query->year = '2023';
+        $query->period = '01';
+        $query->issueDate = $date;
+        $this->assertSame('2023-01-15', $query->getIssueDate());
+        $this->assertEmpty($query->validate());
+
+        $submission = new InvoiceSubmission();
+        $submission->operationDate = $date;
+        $this->assertSame('2023-01-15', $submission->getOperationDate());
+
+        $submission->addRectifiedInvoice('B87654321', 'PREV-001', $date);
+        $submission->addSubstitutedInvoice('B87654321', 'PREV-002', $date);
+        $rectificationData = $submission->getRectificationData();
+
+        $this->assertSame('2023-01-15', $rectificationData['rectified'][0]['issueDate']);
+        $this->assertSame('2023-01-15', $rectificationData['substituted'][0]['issueDate']);
     }
 }
