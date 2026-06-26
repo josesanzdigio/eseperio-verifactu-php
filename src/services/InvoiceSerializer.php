@@ -61,7 +61,7 @@ class InvoiceSerializer
             $idFactura = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDFactura');
             $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $invoiceId->issuerNif));
             $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $invoiceId->seriesNumber));
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $invoiceId->issueDate)));
+            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $invoiceId->getIssueDate())));
             $root->appendChild($idFactura);
         }
 
@@ -122,8 +122,8 @@ class InvoiceSerializer
             $root->appendChild($importeRectificacion);
         }
 
-        if (!empty($invoice->operationDate)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaOperacion', self::formatDate((string) $invoice->operationDate)));
+        if (!empty($invoice->getOperationDate())) {
+            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaOperacion', self::formatDate((string) $invoice->getOperationDate())));
         }
 
         $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:DescripcionOperacion', (string) $invoice->operationDescription));
@@ -292,7 +292,7 @@ class InvoiceSerializer
                     $registroAnterior = $doc->createElementNS(self::SF_NAMESPACE, 'sf:RegistroAnterior');
                     $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $previousInvoice->issuerNif));
                     $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $previousInvoice->seriesNumber));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->issueDate)));
+                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->getIssueDate())));
                     $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Huella', (string) $previousInvoice->hash));
                     $encadenamiento->appendChild($registroAnterior);
                 } else {
@@ -353,7 +353,7 @@ class InvoiceSerializer
             $idFactura = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDFactura');
             $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFacturaAnulada', (string) $invoiceId->issuerNif));
             $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFacturaAnulada', (string) $invoiceId->seriesNumber));
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFacturaAnulada', self::formatDate((string) $invoiceId->issueDate)));
+            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFacturaAnulada', self::formatDate((string) $invoiceId->getIssueDate())));
             $root->appendChild($idFactura);
         }
 
@@ -403,7 +403,7 @@ class InvoiceSerializer
                     $registroAnterior = $doc->createElementNS(self::SF_NAMESPACE, 'sf:RegistroAnterior');
                     $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $previousInvoice->issuerNif));
                     $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $previousInvoice->seriesNumber));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->issueDate)));
+                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->getIssueDate())));
                     $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Huella', (string) $previousInvoice->hash));
                     $encadenamiento->appendChild($registroAnterior);
                 } else {
@@ -506,9 +506,9 @@ class InvoiceSerializer
         }
 
         // FechaExpedicionFactura (Consulta ns) wrapping SF choice type
-        if (!empty($query->issueDate)) {
+        if (!empty($query->getIssueDate())) {
             $fechaWrapper = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:FechaExpedicionFactura');
-            $fechaWrapper->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $query->issueDate)));
+            $fechaWrapper->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $query->getIssueDate())));
             $filtro->appendChild($fechaWrapper);
         }
 

@@ -133,7 +133,7 @@ class QrGeneratorService
 
         // Reformat date from internal YYYY-MM-DD to the AEAT-mandated DD-MM-YYYY.
         // This conversion is scoped to QR output only; the XML serializer is untouched.
-        $date = self::reformatDateForQr($invoiceId->issueDate);
+        $date = self::reformatDateForQr($invoiceId->getIssueDate());
 
         $params = [
             'nif'      => $nif,

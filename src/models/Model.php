@@ -1,12 +1,28 @@
 <?php
 namespace eseperio\verifactu\models;
 
+use DateTimeInterface;
+
 /**
  * Abstract base model with validation support.
  * All models must implement the rules() method and toXml() method.
  */
 abstract class Model
 {
+    /**
+     * Normalizes supported date inputs to the library's internal YYYY-MM-DD contract.
+     *
+     * @param mixed $value
+     */
+    protected static function normalizeIsoDateValue($value)
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+
+        return $value;
+    }
+
     /**
      * Returns validation rules for model properties.
      * Each rule must be an array: [propertyName, validator]

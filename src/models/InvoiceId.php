@@ -32,13 +32,22 @@ class InvoiceId extends Model
     public $issueDate;
 
     /**
+     * Get the normalized issue date.
+     */
+    public function getIssueDate()
+    {
+        return self::normalizeIsoDateValue($this->issueDate);
+    }
+
+    /**
      * Returns validation rules for the invoice ID.
      */
     public function rules(): array
     {
         return [
             [['issuerNif', 'seriesNumber', 'issueDate'], 'required'],
-            [['issuerNif', 'seriesNumber', 'issueDate'], 'string'],
+            [['issuerNif', 'seriesNumber'], 'string'],
+            ['issueDate', fn($value): bool|string => is_string($value) ? true : 'Must be a string.'],
             ['issueDate', fn($value): bool|string =>
                 // Checks for format YYYY-MM-DD (ISO 8601)
                 (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $value)) ? true : 'Must be a valid date (YYYY-MM-DD).'],

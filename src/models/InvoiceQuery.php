@@ -48,6 +48,14 @@ class InvoiceQuery extends Model
     public $issueDate;
 
     /**
+     * Get the normalized issue date filter.
+     */
+    public function getIssueDate()
+    {
+        return self::normalizeIsoDateValue($this->issueDate);
+    }
+
+    /**
      * System information filter (SistemaInformatico, optional).
      */
     private ?array $systemInfo = null;

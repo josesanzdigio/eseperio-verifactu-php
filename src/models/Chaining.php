@@ -45,7 +45,7 @@ class Chaining extends Model
             $chaining = new PreviousInvoiceChaining();
             $chaining->issuerNif = $previousInvoice['issuerNif'] ?? null;
             $chaining->seriesNumber = $previousInvoice['seriesNumber'] ?? null;
-            $chaining->issueDate = $previousInvoice['issueDate'] ?? null;
+            $chaining->issueDate = self::normalizeIsoDateValue($previousInvoice['issueDate'] ?? null);
             $chaining->hash = $previousInvoice['hash'] ?? null;
             $this->previousInvoice = $chaining;
         } else {

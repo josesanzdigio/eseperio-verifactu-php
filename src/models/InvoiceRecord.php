@@ -101,7 +101,7 @@ abstract class InvoiceRecord extends Model
             $id = new InvoiceId();
             $id->issuerNif = $invoiceId['issuerNif'] ?? null;
             $id->seriesNumber = $invoiceId['seriesNumber'] ?? null;
-            $id->issueDate = $invoiceId['issueDate'] ?? null;
+            $id->issueDate = self::normalizeIsoDateValue($invoiceId['issueDate'] ?? null);
             $this->invoiceId = $id;
         } else {
             $this->invoiceId = $invoiceId;
@@ -133,7 +133,7 @@ abstract class InvoiceRecord extends Model
                 $previousInvoice = new PreviousInvoiceChaining();
                 $previousInvoice->issuerNif = $chaining['previousInvoice']['issuerNif'] ?? null;
                 $previousInvoice->seriesNumber = $chaining['previousInvoice']['seriesNumber'] ?? null;
-                $previousInvoice->issueDate = $chaining['previousInvoice']['issueDate'] ?? null;
+                $previousInvoice->issueDate = self::normalizeIsoDateValue($chaining['previousInvoice']['issueDate'] ?? null);
                 $previousInvoice->hash = $chaining['previousHash'] ?? null;
                 $chainingObj->setPreviousInvoice($previousInvoice);
                 $this->chaining = $chainingObj;

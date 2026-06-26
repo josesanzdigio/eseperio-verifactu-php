@@ -73,6 +73,14 @@ class InvoiceSubmission extends InvoiceRecord
     public $operationDate;
 
     /**
+     * Get the normalized operation date.
+     */
+    public function getOperationDate()
+    {
+        return self::normalizeIsoDateValue($this->operationDate);
+    }
+
+    /**
      * Operation description (DescripcionOperacion).
      * @var string
      */
@@ -172,6 +180,20 @@ class InvoiceSubmission extends InvoiceRecord
      */
     public function setRectificationData($rectificationData): static
     {
+        foreach (['rectified', 'substituted'] as $group) {
+            if (empty($rectificationData[$group]) || !is_array($rectificationData[$group])) {
+                continue;
+            }
+
+            foreach ($rectificationData[$group] as $index => $invoice) {
+                if (!is_array($invoice) || !array_key_exists('issueDate', $invoice)) {
+                    continue;
+                }
+
+                $rectificationData[$group][$index]['issueDate'] = self::normalizeIsoDateValue($invoice['issueDate']);
+            }
+        }
+
         $this->rectificationData = $rectificationData;
 
         return $this;
@@ -193,7 +215,7 @@ class InvoiceSubmission extends InvoiceRecord
         $this->rectificationData['rectified'][] = [
             'issuerNif' => $issuerNif,
             'seriesNumber' => $seriesNumber,
-            'issueDate' => $issueDate,
+            'issueDate' => self::normalizeIsoDateValue($issueDate),
         ];
 
         return $this;
@@ -215,7 +237,7 @@ class InvoiceSubmission extends InvoiceRecord
         $this->rectificationData['substituted'][] = [
             'issuerNif' => $issuerNif,
             'seriesNumber' => $seriesNumber,
-            'issueDate' => $issueDate,
+            'issueDate' => self::normalizeIsoDateValue($issueDate),
         ];
 
         return $this;
@@ -426,7 +448,8 @@ class InvoiceSubmission extends InvoiceRecord
     {
         return array_merge(parent::rules(), [
             [['issuerName', 'invoiceType', 'operationDescription', 'breakdown', 'taxAmount', 'totalAmount'], 'required'],
-            [['issuerName', 'operationDescription', 'operationDate', 'invoiceAgreementNumber', 'systemAgreementId'], 'string'],
+            [['issuerName', 'operationDescription', 'invoiceAgreementNumber', 'systemAgreementId'], 'string'],
+            ['operationDate', fn($value): bool|string => is_null($value) || is_string($value) ? true : 'Must be string or null.'],
             ['invoiceType', fn($value): bool|string => ($value instanceof InvoiceType) ? true : 'Must be an instance of InvoiceType.'],
             ['rectificationType', function ($value): bool|string {
                 if ($value === null) {
@@ -535,7 +558,7 @@ class InvoiceSubmission extends InvoiceRecord
                 }
 
                 // Checks for format YYYY-MM-DD (ISO 8601)
-                return (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) ? true : 'Must be a valid date (YYYY-MM-DD).';
+                return (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $value)) ? true : 'Must be a valid date (YYYY-MM-DD).';
             }],
             ['rectificationData', function ($value): bool|string {
                 if ($value === null || $value === []) {
@@ -571,7 +594,7 @@ class InvoiceSubmission extends InvoiceRecord
                 }
 
                 // Verifica el formato YYYY-MM-DD (ISO 8601)
-                return (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value->issueDate))
+                return (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $value->getIssueDate()))
                     ? true
                     : 'The issue date must be in YYYY-MM-DD format.';
             }],
