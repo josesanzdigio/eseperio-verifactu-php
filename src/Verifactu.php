@@ -48,6 +48,16 @@ class Verifactu
      */
     public const QR_VERIFICATION_URL_TEST = 'https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR';
 
+    /**
+     * No VERI*FACTU QR verification URL (production).
+     */
+    public const QR_NO_VERIFACTU_VERIFICATION_URL_PRODUCTION = 'https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu';
+
+    /**
+     * No VERI*FACTU QR verification URL (testing/homologation).
+     */
+    public const QR_NO_VERIFACTU_VERIFICATION_URL_TEST = 'https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu';
+
     public const TYPE_CERTIFICATE = 'certificate';
     public const TYPE_SEAL = 'seal';
 
@@ -76,6 +86,31 @@ class Verifactu
             VerifactuService::CERT_PASSWORD_KEY => $certPassword,
             VerifactuService::SOAP_ENDPOINT => $endpoint,
             VerifactuService::QR_VERIFICATION_URL => $qrValidationUrl,
+            VerifactuService::QR_MODE => VerifactuService::QR_MODE_VERIFACTU,
+        ]);
+    }
+
+    /**
+     * Configures the library for QR-only No VERI*FACTU mode.
+     *
+     * This method sets up only the QR validation endpoint for No VERI*FACTU invoices.
+     * No certificate or SOAP configuration is required or set — SOAP operations
+     * (register, cancel, query) are not available in this mode.
+     *
+     * @param string $environment Environment to use: 'production' or 'sandbox'.
+     * @throws \InvalidArgumentException if the environment is not recognized.
+     */
+    public static function configNoVerifactu(string $environment = self::ENVIRONMENT_PRODUCTION): void
+    {
+        $qrValidationUrl = match ($environment) {
+            self::ENVIRONMENT_PRODUCTION => self::QR_NO_VERIFACTU_VERIFICATION_URL_PRODUCTION,
+            self::ENVIRONMENT_SANDBOX => self::QR_NO_VERIFACTU_VERIFICATION_URL_TEST,
+            default => throw new \InvalidArgumentException("Invalid environment: $environment")
+        };
+
+        VerifactuService::config([
+            VerifactuService::QR_VERIFICATION_URL => $qrValidationUrl,
+            VerifactuService::QR_MODE => VerifactuService::QR_MODE_NO_VERIFACTU,
         ]);
     }
 
@@ -107,9 +142,13 @@ class Verifactu
     }
 
     /**
-     * Generates a base64 QR code for the provided invoice.
+     * Generates a QR code for the provided invoice using the configured QR mode.
      *
-     * @return string base64-encoded PNG QR code
+     * When the service is configured via `configNoVerifactu()`, this method generates
+     * a No VERI*FACTU QR code (no huella, mandatory importe, No VERI*FACTU endpoint).
+     * When configured via `config()`, it generates a VERI*FACTU QR code.
+     *
+     * @return string QR image data (binary PNG by default)
      */
     public static function generateInvoiceQr(InvoiceRecord $record): string
     {

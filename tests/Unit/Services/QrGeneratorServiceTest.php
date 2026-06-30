@@ -352,6 +352,230 @@ class QrGeneratorServiceTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // Task 2.1 RED — No VERI*FACTU URL contract
+    // -------------------------------------------------------------------------
+
+    /**
+     * Spec scenario: No VERI*FACTU URL emits only the mandated parameters.
+     *
+     * Given a No VERI*FACTU invoice with NIF, series, date 2026-06-30, amount 121.4, and a hash,
+     * When its QR URL is generated in No VERI*FACTU mode,
+     * Then the query contains exactly nif, numserie, fecha=30-06-2026, importe=121.4
+     * AND the query does NOT contain huella, num, or formato=json.
+     */
+    public function testNoVerifactuUrlEmitsOnlyMandatedParameters(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-NOVERIF-001', '2026-06-30', 'somehash');
+
+        $result = $this->invokeBuildQrContentNoVerifactu($record, 'https://example.com/noverif', 121.4);
+
+        // Mandatory params
+        $this->assertStringContainsString('nif=B12345678', $result);
+        $this->assertStringContainsString('numserie=', $result);
+        $this->assertStringContainsString('fecha=30-06-2026', $result);
+        $this->assertStringContainsString('importe=121.4', $result);
+
+        // Forbidden params
+        $this->assertStringNotContainsString('huella', $result, 'No VERI*FACTU must NOT emit huella');
+        $this->assertStringNotContainsString('num=', $result, 'No VERI*FACTU must NOT degrade numserie to num');
+        $this->assertStringNotContainsString('formato', $result, 'No VERI*FACTU must NOT emit formato=json');
+    }
+
+    /**
+     * Spec scenario: No VERI*FACTU rejects a missing amount.
+     *
+     * Given a No VERI*FACTU invoice whose total amount is unavailable,
+     * When its QR URL is generated,
+     * Then generation MUST fail because importe is mandatory.
+     */
+    public function testNoVerifactuThrowsWhenImporteIsNull(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-30', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/importe/i');
+
+        $this->invokeBuildQrContentNoVerifactu($record, 'https://example.com/noverif', null);
+    }
+
+    /**
+     * VERI*FACTU regression: after adding No VERI*FACTU support,
+     * existing VERI*FACTU URLs must keep their semantics unchanged.
+     *
+     * Spec scenario: VERI*FACTU QR keeps the current endpoint and parameter names.
+     */
+    public function testVerifactuUrlRegressionAfterModeExpansion(): void
+    {
+        $record = $this->makeRecord('A87654321', 'SER/2026/099', '2026-01-15', 'verifactuhash');
+
+        // Standard VERI*FACTU call (noVerifactu = false, which is the default)
+        $result = $this->invokeBuildQrContent($record, 'https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR', 99.9);
+
+        $this->assertStringContainsString('nif=A87654321', $result);
+        $this->assertStringContainsString('numserie=', $result);
+        $this->assertStringContainsString('fecha=15-01-2026', $result);
+        $this->assertStringContainsString('importe=99.9', $result);
+        $this->assertStringContainsString('huella=verifactuhash', $result);
+        $this->assertStringNotContainsString('num=', $result);
+        $this->assertStringNotContainsString('formato', $result);
+    }
+
+    /**
+     * VERI*FACTU still includes huella only when available.
+     * Spec scenario: VERI*FACTU still includes huella only when available.
+     */
+    public function testVerifactuOmitsHuellaWhenHashIsNull(): void
+    {
+        $record = $this->makeRecord('A87654321', 'SER/2026/099', '2026-01-15', null);
+
+        $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 50.0);
+
+        $this->assertStringNotContainsString('huella', $result);
+        $this->assertStringContainsString('nif=A87654321', $result);
+        $this->assertStringContainsString('numserie=', $result);
+    }
+
+    /**
+     * No VERI*FACTU: uses the configured No VERI*FACTU base URL.
+     * Spec scenario: Production No VERI*FACTU QR uses the production endpoint.
+     */
+    public function testNoVerifactuUrlUsesConfiguredNoVerifactuBaseUrl(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-30', null);
+        $noVerifactuBaseUrl = 'https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu';
+
+        $result = $this->invokeBuildQrContentNoVerifactu($record, $noVerifactuBaseUrl, 50.0);
+
+        $this->assertStringStartsWith($noVerifactuBaseUrl . '?', $result);
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 3.1 RED — EC level M and margin/size stability assertions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Spec scenario: Default QR output uses AEAT-compliant error correction (level M).
+     *
+     * EC level M is enforced by passing ErrorCorrectionLevel::M() to Writer::writeString().
+     * We verify this indirectly: the same content encoded at L vs M produces
+     * different QR images (M carries more redundancy data).
+     */
+    public function testQrUsesErrorCorrectionLevelM(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-30', null);
+
+        // Generate with the library's default path (which must use EC M after the fix)
+        $qrM = QrGeneratorService::generateQr(
+            $record,
+            'https://example.com/verify',
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG,
+            50.0
+        );
+
+        // Independently encode the same content at L to prove the two differ.
+        // This rules out "both are the same QR anyway" — level M yields a denser matrix.
+        $content = 'https://example.com/verify?' . http_build_query([
+            'nif' => 'B12345678',
+            'numserie' => 'FACT-001',
+            'fecha' => '30-06-2026',
+            'importe' => 50.0,
+        ]);
+
+        $writerL = new \BaconQrCode\Writer(
+            new \BaconQrCode\Renderer\ImageRenderer(
+                new \BaconQrCode\Renderer\RendererStyle\RendererStyle(300),
+                new \BaconQrCode\Renderer\Image\SvgImageBackEnd()
+            )
+        );
+        $qrLevelL = $writerL->writeString($content, 'ISO-8859-1', \BaconQrCode\Common\ErrorCorrectionLevel::L());
+
+        $writerM = new \BaconQrCode\Writer(
+            new \BaconQrCode\Renderer\ImageRenderer(
+                new \BaconQrCode\Renderer\RendererStyle\RendererStyle(300),
+                new \BaconQrCode\Renderer\Image\SvgImageBackEnd()
+            )
+        );
+        $qrLevelM = $writerM->writeString($content, 'ISO-8859-1', \BaconQrCode\Common\ErrorCorrectionLevel::M());
+
+        // The library-generated QR must match level M, not level L.
+        $this->assertNotSame($qrLevelL, $qrLevelM, 'EC L and M must produce different QR outputs (verifies this test is meaningful)');
+        $this->assertSame($qrLevelM, $qrM, 'QrGeneratorService must use EC level M per AEAT Art.21');
+    }
+
+    /**
+     * Spec scenario: Size and margin tuning preserves QR content semantics.
+     *
+     * Two QR images with different margin/size must encode the same verification URL.
+     * We verify this by extracting the URL from the SVG path data — in practice,
+     * we just confirm both SVGs are non-empty and that same content at different
+     * sizes still contains the same QR data marker (the SVG rect counts match dimensions
+     * but the logical URL payload is identical).
+     *
+     * Approach: generate the expected URL, build both QRs, confirm they decode to
+     * the same content by re-encoding the expected URL at both sizes and matching output.
+     */
+    public function testMarginAndSizeChangesDoNotAlterQrUrlSemantics(): void
+    {
+        $record = $this->makeRecord('B12345678', 'SER/2026/001', '2026-06-30', null);
+
+        $qrDefault = QrGeneratorService::generateQr(
+            $record,
+            'https://example.com/verify',
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG,
+            99.0,
+            4  // margin default
+        );
+
+        $qrLargeMargin = QrGeneratorService::generateQr(
+            $record,
+            'https://example.com/verify',
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG,
+            99.0,
+            10 // wider margin
+        );
+
+        // Both must be non-empty SVG output
+        $this->assertStringContainsString('<svg', $qrDefault);
+        $this->assertStringContainsString('<svg', $qrLargeMargin);
+
+        // The two renderings differ (different margins = different layout)
+        $this->assertNotSame($qrDefault, $qrLargeMargin, 'Different margins must produce different SVG output');
+
+        // Verify the URL payload is the same: encode the same URL at both margin settings
+        // using a reference writer and confirm our service output matches.
+        $expectedUrl = 'https://example.com/verify?' . http_build_query([
+            'nif' => 'B12345678',
+            'numserie' => 'SER/2026/001',
+            'fecha' => '30-06-2026',
+            'importe' => 99.0,
+        ]);
+
+        $refWriterDefault = new \BaconQrCode\Writer(
+            new \BaconQrCode\Renderer\ImageRenderer(
+                new \BaconQrCode\Renderer\RendererStyle\RendererStyle(300, 4),
+                new \BaconQrCode\Renderer\Image\SvgImageBackEnd()
+            )
+        );
+        $refQrDefault = $refWriterDefault->writeString($expectedUrl, 'ISO-8859-1', \BaconQrCode\Common\ErrorCorrectionLevel::M());
+        $this->assertSame($refQrDefault, $qrDefault, 'QR with default margin must match reference encoding at margin=4');
+
+        $refWriterLarge = new \BaconQrCode\Writer(
+            new \BaconQrCode\Renderer\ImageRenderer(
+                new \BaconQrCode\Renderer\RendererStyle\RendererStyle(300, 10),
+                new \BaconQrCode\Renderer\Image\SvgImageBackEnd()
+            )
+        );
+        $refQrLarge = $refWriterLarge->writeString($expectedUrl, 'ISO-8859-1', \BaconQrCode\Common\ErrorCorrectionLevel::M());
+        $this->assertSame($refQrLarge, $qrLargeMargin, 'QR with large margin must match reference encoding at margin=10');
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
@@ -412,5 +636,20 @@ class QrGeneratorServiceTest extends TestCase
         $method->setAccessible(true);
 
         return (string) $method->invoke(null, $record, $baseUrl, $totalAmount);
+    }
+
+    /**
+     * Invoke the protected buildQrContent method in No VERI*FACTU mode via reflection.
+     */
+    private function invokeBuildQrContentNoVerifactu(
+        InvoiceRecord $record,
+        string $baseUrl,
+        ?float $totalAmount
+    ): string {
+        $rc     = new \ReflectionClass(QrGeneratorService::class);
+        $method = $rc->getMethod('buildQrContent');
+        $method->setAccessible(true);
+
+        return (string) $method->invoke(null, $record, $baseUrl, $totalAmount, true);
     }
 }

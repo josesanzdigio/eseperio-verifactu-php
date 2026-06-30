@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace eseperio\verifactu\services;
 
+use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Renderer\GDLibRenderer;
 use BaconQrCode\Renderer\Image\ImagickImageBackEnd;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
@@ -74,15 +75,21 @@ class QrGeneratorService
 
     /**
      * Generates a QR code for a given invoice record,
-     * using the AEAT Verifactu QR specification (URL and fields).
+     * using the AEAT Verifactu or No VERI*FACTU QR specification.
      *
-     * @param string $baseVerificationUrl Base URL for AEAT invoice verification
-     * @param string $dest Destination type (file or string)
-     * @param int $size Resolution of the QR code
-     * @param string $engine Renderer to use (gd, imagick, svg)
-     * @param float|null $totalAmount Total invoice amount (ImporteTotal); included in QR only when provided
+     * All generated QR codes use error correction level M per AEAT Art.21.
+     *
+     * @param InvoiceRecord $record              Invoice record to encode
+     * @param string        $baseVerificationUrl Base URL for AEAT invoice verification
+     * @param string        $dest                Destination type (file or string)
+     * @param int           $size                Resolution of the QR code in pixels
+     * @param string        $engine              Renderer to use (gd, imagick, svg)
+     * @param float|null    $totalAmount         Total invoice amount; required for No VERI*FACTU, optional for VERI*FACTU
+     * @param int           $margin              Renderer margin (module units around QR matrix)
+     * @param bool          $noVerifactu         When true, uses No VERI*FACTU URL contract (no huella, mandatory importe)
      * @return string QR image data or file path
      * @throws \RuntimeException
+     * @throws \InvalidArgumentException if No VERI*FACTU mode is active and totalAmount is null
      */
     public static function generateQr(
         InvoiceRecord $record,
@@ -90,11 +97,14 @@ class QrGeneratorService
         $dest = self::DESTINATION_STRING,
         $size = 300,
         $engine = self::RENDERER_GD,
-        ?float $totalAmount = null
+        ?float $totalAmount = null,
+        int $margin = 4,
+        bool $noVerifactu = false,
     ) {
-        $qrContent = self::buildQrContent($record, $baseVerificationUrl, $totalAmount);
-        $writer = self::createWriter($engine, $size);
-        $qrData = $writer->writeString($qrContent);
+        $qrContent = self::buildQrContent($record, $baseVerificationUrl, $totalAmount, $noVerifactu);
+        $writer = self::createWriter($engine, $size, $margin);
+        // AEAT Art.21 mandates error correction level M for all generated QR codes.
+        $qrData = $writer->writeString($qrContent, 'ISO-8859-1', ErrorCorrectionLevel::M());
 
         if ($dest === self::DESTINATION_FILE) {
             $filePath = sys_get_temp_dir() . '/qr_' . uniqid() . self::getFileExtension($engine);
@@ -107,25 +117,41 @@ class QrGeneratorService
     }
 
     /**
-     * Builds the QR content string according to the AEAT VERI*FACTU QR specification.
+     * Builds the QR content string according to the AEAT QR specification.
      *
-     * AEAT-compliant parameter contract:
+     * VERI*FACTU parameter contract:
      * - `nif`      — issuer NIF (mandatory)
      * - `numserie` — invoice series + number (mandatory; replaces legacy `num`)
      * - `fecha`    — issue date in DD-MM-YYYY format (mandatory; QR-only conversion)
-     * - `importe`  — total invoice amount (mandatory for verifiable invoices; omitted when null)
+     * - `importe`  — total invoice amount (optional; omitted when null)
      * - `huella`   — SHA-256 hash/fingerprint (optional; included only when hash is set)
+     *
+     * No VERI*FACTU parameter contract:
+     * - `nif`      — issuer NIF (mandatory)
+     * - `numserie` — invoice series + number (mandatory)
+     * - `fecha`    — issue date in DD-MM-YYYY format (mandatory)
+     * - `importe`  — total invoice amount (mandatory; throws when null)
+     * - `huella`   — MUST NOT be emitted
      *
      * `formato=json` MUST NOT appear in the QR URL per AEAT specification.
      *
      * @param string     $baseVerificationUrl Base URL for AEAT invoice verification
-     * @param float|null $totalAmount         Total invoice amount (ImporteTotal); omitted when null
+     * @param float|null $totalAmount         Total invoice amount (ImporteTotal)
+     * @param bool       $noVerifactu         When true, applies No VERI*FACTU contract
+     * @throws \InvalidArgumentException if No VERI*FACTU mode is active and totalAmount is null
      */
     protected static function buildQrContent(
         InvoiceRecord $record,
         $baseVerificationUrl,
-        ?float $totalAmount = null
+        ?float $totalAmount = null,
+        bool $noVerifactu = false,
     ): string {
+        if ($noVerifactu && $totalAmount === null) {
+            throw new \InvalidArgumentException(
+                'importe is mandatory for No VERI*FACTU QR generation and must not be null.'
+            );
+        }
+
         $invoiceId = $record->getInvoiceId();
         $nif    = $invoiceId->issuerNif;
         $series = $invoiceId->seriesNumber;
@@ -145,7 +171,8 @@ class QrGeneratorService
             $params['importe'] = $totalAmount;
         }
 
-        if (!empty($hash)) {
+        // huella is suppressed in No VERI*FACTU mode; included in VERI*FACTU when available.
+        if (!$noVerifactu && !empty($hash)) {
             $params['huella'] = $hash;
         }
 
@@ -176,21 +203,22 @@ class QrGeneratorService
     }
 
     /**
-     * Creates a writer with the specified renderer and resolution.
+     * Creates a writer with the specified renderer, resolution, and margin.
      *
      * @param string $renderer
-     * @param int $resolution
+     * @param int    $resolution
+     * @param int    $margin
      * @throws \RuntimeException
      */
-    protected static function createWriter($renderer, $resolution): Writer
+    protected static function createWriter($renderer, $resolution, int $margin = 4): Writer
     {
         switch ($renderer) {
             case self::RENDERER_GD:
-                return new Writer(new GDLibRenderer($resolution));
+                return new Writer(new GDLibRenderer($resolution, $margin));
 
             case self::RENDERER_IMAGICK:
                 $imageRenderer = new ImageRenderer(
-                    new RendererStyle($resolution),
+                    new RendererStyle($resolution, $margin),
                     new ImagickImageBackEnd()
                 );
 
@@ -198,7 +226,7 @@ class QrGeneratorService
 
             case self::RENDERER_SVG:
                 $imageRenderer = new ImageRenderer(
-                    new RendererStyle($resolution),
+                    new RendererStyle($resolution, $margin),
                     new SvgImageBackEnd()
                 );
 

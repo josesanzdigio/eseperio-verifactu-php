@@ -27,6 +27,12 @@ class VerifactuService
     public const CERT_PASSWORD_KEY = 'certPassword';
     /** QR verification URL parameter name. */
     public const QR_VERIFICATION_URL = 'qrValidationUrl';
+    /** QR generation mode parameter name. */
+    public const QR_MODE = 'qrMode';
+    /** QR mode value for VERI*FACTU (default). */
+    public const QR_MODE_VERIFACTU = 'verifactu';
+    /** QR mode value for No VERI*FACTU. */
+    public const QR_MODE_NO_VERIFACTU = 'no_verifactu';
 
     /** Global configuration for Verifactu service. @var array */
     protected static $config = [];
@@ -37,8 +43,11 @@ class VerifactuService
     /** Sets the global configuration. @param array $data */
     public static function config($data): void
     {
-        // Use official AEAT WSDL from repo if not set in config
-        if (!isset($data[self::WSDL_ENDPOINT]) || empty($data[self::WSDL_ENDPOINT])) {
+        // Use official AEAT WSDL from repo if not set in config.
+        // Skip WSDL injection in QR-only (No VERI*FACTU) mode to avoid
+        // accidentally requiring the SOAP subsystem when it is not needed.
+        $isQrOnlyMode = isset($data[self::QR_MODE]) && $data[self::QR_MODE] === self::QR_MODE_NO_VERIFACTU;
+        if (!$isQrOnlyMode && (!isset($data[self::WSDL_ENDPOINT]) || empty($data[self::WSDL_ENDPOINT]))) {
             $data[self::WSDL_ENDPOINT] = __DIR__ . '/../schemes/SistemaFacturacion.wsdl';
         }
         self::$config = $data;
@@ -274,16 +283,21 @@ TXT
      * The configured `QR_VERIFICATION_URL` (production or test endpoint) is used
      * as the base URL and remains unchanged by this method.
      *
+     * When the service is configured in No VERI*FACTU mode (`qrMode = no_verifactu`),
+     * the QR generator uses the No VERI*FACTU URL contract (no `huella`, mandatory `importe`).
+     *
      * @param string $destination Destination type (file or string)
      * @param int    $size        Resolution of the QR code
      * @param string $engine      Renderer to use (gd, imagick, svg)
+     * @param int    $margin      Renderer margin (passed through to QR generator)
      * @return string QR image data or file path
      */
     public static function generateInvoiceQr(
         InvoiceRecord $record,
                       $destination = QrGeneratorService::DESTINATION_STRING,
                       $size = 300,
-                      $engine = QrGeneratorService::RENDERER_GD
+                      $engine = QrGeneratorService::RENDERER_GD,
+                      int $margin = 4
     )
     {
         $baseUrl = self::getConfig(self::QR_VERIFICATION_URL);
@@ -292,7 +306,11 @@ TXT
         // Cancellations and other non-verifiable records carry no ImporteTotal.
         $totalAmount = ($record instanceof InvoiceSubmission) ? (float) $record->totalAmount : null;
 
-        return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $totalAmount);
+        // Determine QR mode — default to verifactu for backward compatibility.
+        $qrMode = self::$config[self::QR_MODE] ?? self::QR_MODE_VERIFACTU;
+        $noVerifactu = ($qrMode === self::QR_MODE_NO_VERIFACTU);
+
+        return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $totalAmount, $margin, $noVerifactu);
     }
 
     // The XML helper methods (wrapXmlWithRegFactuStructure, buildInvoiceXml, buildCancellationXml, buildQueryXml)

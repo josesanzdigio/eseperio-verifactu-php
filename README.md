@@ -6,7 +6,7 @@
 
 [ES] Librería completa (registro, consulta, anulación) orientada a objetos para la integración del sistema de facturación digital de Verifactu.
 
-[EN] Full object oriented (register, query, cancellation) library for integration of Verifactu digital invoicing system.
+[EN] Full object oriented (register, query, cancellation) library for integration of Verifactu digital invoicing system. Also supports No VERI*FACTU QR generation for invoicing software that is not required to submit to AEAT.
 
 
 Disclaimer: this is an open source library, not an invoicing system. It is provided **without any warranties**; it is
@@ -14,12 +14,14 @@ the sole responsibility of the integrator to verify its correct operation and co
 requirements. The library includes automated tests to help verify its functionality, but use in production is at your
 own risk.
 
-**A modern PHP library for integrating with 🇪🇸Spain’s AEAT Verifactu system (digital invoice submission, cancellation,
-querying, and events) according to the official regulatory technical specification.**
+**A modern PHP library for integrating with 🇪🇸Spain's AEAT Verifactu system (digital invoice submission, cancellation,
+querying, and events) according to the official regulatory technical specification. Also generates AEAT-compliant QR
+codes for No VERI*FACTU invoice systems.**
 
 > [!NOTE]
-> This library supports verifactu transactions only. For non verifactu signed transactions, such as those required when
-> not using invoicing software, you may look for a different library.
+> VERI*FACTU and No VERI*FACTU are two separate QR modes. VERI*FACTU is for software that submits invoices to AEAT
+> (requires SOAP/certificate). No VERI*FACTU is for invoicing software that is not required to submit — QR generation
+> only, no certificate needed.
 
 ---
 
@@ -29,6 +31,12 @@ querying, and events) according to the official regulatory technical specificati
 * [Features](#features)
 * [Installation](#installation)
 * [Basic Usage](#basic-usage)
+  * [1. Configuration — VERI\*FACTU](#1-configuration)
+  * [2. Configuration — No VERI\*FACTU QR only](#2-configuration--no-verifactu-qr-only)
+  * [3. Register an Invoice](#3-register-an-invoice-alta)
+  * [4. Cancel an Invoice](#4-cancel-an-invoice-anulación)
+  * [5. Query Submitted Invoices](#5-query-submitted-invoices)
+  * [6. Generate QR for an Invoice](#6-generate-qr-for-an-invoice)
 * [AEAT Workflow Overview](#aeat-workflow-overview)
 * [Configuration](#configuration)
 * [Main Models](#main-models)
@@ -50,7 +58,7 @@ invoicing system, including:
 * Invoice cancellation (Anulación)
 * Querying previously submitted invoices
 * Event notification (system-level events required by law)
-* QR code generation (for inclusion on invoices)
+* QR code generation for **both VERI\*FACTU and No VERI\*FACTU** invoice systems (AEAT EC level M)
 * Built-in XML signature (XAdES enveloped) and hash calculation
 * Error translation using the official AEAT code dictionary
 
@@ -65,7 +73,8 @@ It is designed for easy Composer-based installation and seamless integration int
 * Fully modular, easily testable architecture
 * Certificate management for SOAP and XML signature
 * Compatible with both production and testing AEAT endpoints
-* Lightweight QR code generation (no unnecessary dependencies)
+* VERI\*FACTU QR and **No VERI\*FACTU QR** generation — AEAT-compliant EC level M, configurable size and margin
+* No VERI\*FACTU mode requires no certificate or SOAP setup
 * Developer-friendly validation and error reporting
 
 ---
@@ -87,12 +96,10 @@ composer require robrichards/xmlseclibs
 
 ## Basic Usage
 
-### 1. **Configuration**
+### 1. **Configuration — VERI\*FACTU**
 
-Before using any service, you must configure the library with your certificate, password, certificate type, and
-environment.  
-Choose between certificate type (`certificate` or `seal`) and environment (`production` or `sandbox`) according to
-whether you'll be working in production or testing.
+Required for invoice submission (register, cancel, query) and VERI\*FACTU QR generation.
+Provide your certificate, certificate type, and target environment.
 
 ```php
 use eseperio\verifactu\Verifactu;
@@ -113,7 +120,27 @@ Verifactu::config(
 
 ---
 
-### 2. **Register an Invoice (Alta)**
+### 2. **Configuration — No VERI\*FACTU QR only**
+
+For invoicing software that is **not** required to submit to AEAT. This mode is QR generation only —
+no certificate, no SOAP setup required. Register/cancel/query operations are not available in this mode.
+
+```php
+use eseperio\verifactu\Verifactu;
+
+// Production No VERI*FACTU (default)
+Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
+
+// Or for AEAT homologation/testing
+Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
+```
+
+After calling `configNoVerifactu()`, calls to `Verifactu::generateInvoiceQr()` will produce a No VERI\*FACTU QR
+pointing to the AEAT No VERI\*FACTU validation endpoint.
+
+---
+
+### 3. **Register an Invoice (Alta)**
 
 ```php
 use eseperio\verifactu\Verifactu;
@@ -233,7 +260,7 @@ if ($response->submissionStatus === \eseperio\verifactu\models\InvoiceResponse::
 
 ---
 
-### 3. **Cancel an Invoice (Anulación)**
+### 4. **Cancel an Invoice (Anulación)**
 
 ```php
 use eseperio\verifactu\Verifactu;
@@ -320,7 +347,7 @@ if ($response->submissionStatus === \eseperio\verifactu\models\InvoiceResponse::
 
 ---
 
-### 4. **Query Submitted Invoices**
+### 5. **Query Submitted Invoices**
 
 ```php
 use eseperio\verifactu\Verifactu;
@@ -408,109 +435,87 @@ if ($result->queryStatus === \eseperio\verifactu\models\QueryResponse::STATUS_OK
 
 ---
 
-### 5. **Generate QR for an Invoice**
+### 6. **Generate QR for an Invoice**
 
-The library provides flexible options for generating QR codes for invoices, supporting different renderers, resolutions,
-and output formats.
+`Verifactu::generateInvoiceQr($invoice)` works for **both VERI\*FACTU and No VERI\*FACTU** modes. The active mode is
+determined by which config method was called (`config()` or `configNoVerifactu()`). All QR codes use AEAT-compliant
+error correction level M.
+
+#### VERI\*FACTU QR
+
+After calling `Verifactu::config(...)` and submitting an invoice to receive a CSV:
 
 ```php
 use eseperio\verifactu\Verifactu;
-use eseperio\verifactu\services\QrGeneratorService;
-use eseperio\verifactu\models\InvoiceRecord;
-use eseperio\verifactu\models\InvoiceSubmission;
 
-// Assuming you already have a valid InvoiceSubmission or InvoiceCancellation object
-// that has been submitted to AEAT and has a CSV
-
-// Basic usage (returns raw image data using GD renderer)
+// Basic — returns raw PNG binary
 $qrData = Verifactu::generateInvoiceQr($invoice);
 
-// Save QR directly to a file
-$filePath = Verifactu::generateInvoiceQr(
-    $invoice,
-    QrGeneratorService::DESTINATION_FILE, // Save to file instead of returning data
-    300, // Resolution (size in pixels)
-    QrGeneratorService::RENDERER_GD // Use GD library (default)
-);
-echo "QR code saved to: $filePath";
-
-// Generate SVG format
-$svgData = Verifactu::generateInvoiceQr(
-    $invoice,
-    QrGeneratorService::DESTINATION_STRING,
-    300,
-    QrGeneratorService::RENDERER_SVG
-);
-// Use SVG data directly in HTML
-echo '<div>' . $svgData . '</div>';
-
-// Generate using Imagick (if available on your server)
-$pngData = Verifactu::generateInvoiceQr(
-    $invoice,
-    QrGeneratorService::DESTINATION_STRING,
-    300,
-    QrGeneratorService::RENDERER_IMAGICK
-);
-
-// Convert to base64 for embedding in HTML or PDF
-$base64Data = base64_encode($pngData);
-echo '<img src="data:image/png;base64,' . $base64Data . '" alt="QR Code" />';
-
-// Higher resolution QR code
-$highResQr = Verifactu::generateInvoiceQr(
-    $invoice,
-    QrGeneratorService::DESTINATION_STRING,
-    600 // Higher resolution
-);
-
-// Complete example with a new invoice
-$invoice = new InvoiceSubmission();
-// ... set all required properties as shown in the Register an Invoice example ...
-
-// First submit the invoice to get a CSV
-$response = Verifactu::registerInvoice($invoice);
-
-if ($response->submissionStatus === \eseperio\verifactu\models\InvoiceResponse::STATUS_OK) {
-    // Now we can generate a QR code for the invoice
-    // The QR code will include the CSV from the response
-    $invoice->csv = $response->csv;
-
-    // Generate QR code as PNG and save to file
-    $qrFilePath = Verifactu::generateInvoiceQr(
-        $invoice,
-        QrGeneratorService::DESTINATION_FILE,
-        300,
-        QrGeneratorService::RENDERER_GD
-    );
-
-    echo "Invoice registered successfully with CSV: " . $response->csv . "\n";
-    echo "QR code saved to: " . $qrFilePath . "\n";
-
-    // Generate QR code as base64 for embedding in HTML
-    $qrData = Verifactu::generateInvoiceQr(
-        $invoice,
-        QrGeneratorService::DESTINATION_STRING,
-        300,
-        QrGeneratorService::RENDERER_GD
-    );
-    $base64QrCode = base64_encode($qrData);
-
-    echo '<img src="data:image/png;base64,' . $base64QrCode . '" alt="Invoice QR Code" />';
-}
+// Base64 for HTML embedding
+echo '<img src="data:image/png;base64,' . base64_encode($qrData) . '" alt="Invoice QR Code" />';
 ```
 
-#### Available Options:
+#### No VERI\*FACTU QR
 
-- **Destination Types**:
-    - `QrGeneratorService::DESTINATION_STRING`: Returns the raw image data (default)
-    - `QrGeneratorService::DESTINATION_FILE`: Saves to a temporary file and returns the file path
+After calling `Verifactu::configNoVerifactu(...)`. No SOAP or certificate setup needed.
+The invoice record must have `totalAmount` set — it is mandatory for the No VERI\*FACTU URL.
 
-- **Renderer Types**:
-    - `QrGeneratorService::RENDERER_GD`: Uses GD library (default, widely available)
-    - `QrGeneratorService::RENDERER_IMAGICK`: Uses ImageMagick (if available)
-    - `QrGeneratorService::RENDERER_SVG`: Generates SVG format (vector-based)
+```php
+use eseperio\verifactu\Verifactu;
 
-- **Resolution**: Size in pixels (default: 300)
+Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
+
+// $invoice must have issuerNif (nif), seriesNumber (numserie), issueDate (fecha),
+// and totalAmount (importe). huella is never included in No VERI*FACTU QR URLs.
+$qrData = Verifactu::generateInvoiceQr($invoice);
+```
+
+> **No VERI\*FACTU URL contract**: the QR URL includes `nif`, `numserie`, `fecha` (DD-MM-YYYY format),
+> and `importe`. It never includes `huella` or `formato=json`. `importe` is mandatory — generation
+> fails if `totalAmount` is not set on the invoice record.
+
+#### Advanced QR options (via `QrGeneratorService` directly)
+
+For custom size, margin, or renderer, call `QrGeneratorService::generateQr()` directly:
+
+```php
+use eseperio\verifactu\services\QrGeneratorService;
+use eseperio\verifactu\services\VerifactuService;
+
+$baseUrl = VerifactuService::getConfig()[VerifactuService::QR_VERIFICATION_URL];
+
+// SVG, 400 px, margin 6
+$svgData = QrGeneratorService::generateQr(
+    $invoice,
+    $baseUrl,
+    QrGeneratorService::DESTINATION_STRING,
+    400,                               // size in pixels
+    QrGeneratorService::RENDERER_SVG,
+    $invoice->totalAmount,             // required for No VERI*FACTU; optional for VERI*FACTU
+    6,                                 // margin (default: 4)
+    false                              // noVerifactu flag (set true for No VERI*FACTU)
+);
+
+// Save to file
+$path = QrGeneratorService::generateQr(
+    $invoice,
+    $baseUrl,
+    QrGeneratorService::DESTINATION_FILE,
+    300
+);
+```
+
+#### Available Options
+
+| Option | Values | Default |
+|--------|--------|---------|
+| Destination | `DESTINATION_STRING` (raw data), `DESTINATION_FILE` (temp file path) | `DESTINATION_STRING` |
+| Renderer | `RENDERER_GD`, `RENDERER_IMAGICK`, `RENDERER_SVG` | `RENDERER_GD` |
+| Size | Integer pixels | `300` |
+| Margin | Integer (quiet zone modules) | `4` |
+| Error correction | Level M — fixed, AEAT-compliant | M (always) |
+
+
 
 ---
 
@@ -536,16 +541,34 @@ The same flow applies to cancellations and events, changing only the data model 
 
 ## Configuration
 
-The library is configured using the `Verifactu::config()` method, which accepts the following parameters:
+### `Verifactu::config()` — VERI\*FACTU (invoice submission + QR)
+
+Required for register, cancel, query, and VERI\*FACTU QR generation.
 
 ```php
 Verifactu::config(
     string $certPath,           // Path to your digital certificate (PFX or P12 format)
     string $certPassword,       // Password for the certificate file
     string $certType,           // Type of certificate: Verifactu::TYPE_CERTIFICATE or Verifactu::TYPE_SEAL
-    string $environment = Verifactu::ENVIRONMENT_PRODUCTION // Environment: Verifactu::ENVIRONMENT_PRODUCTION or Verifactu::ENVIRONMENT_SANDBOX
+    string $environment = Verifactu::ENVIRONMENT_PRODUCTION // Environment: ENVIRONMENT_PRODUCTION or ENVIRONMENT_SANDBOX
 );
 ```
+
+### `Verifactu::configNoVerifactu()` — No VERI\*FACTU (QR only)
+
+For invoicing software not required to submit to AEAT. **No certificate or SOAP configuration is required.**
+Only `Verifactu::generateInvoiceQr()` is available in this mode — register/cancel/query are not.
+
+```php
+Verifactu::configNoVerifactu(
+    string $environment = Verifactu::ENVIRONMENT_PRODUCTION // ENVIRONMENT_PRODUCTION or ENVIRONMENT_SANDBOX
+);
+```
+
+| Environment | No VERI\*FACTU QR endpoint |
+|-------------|---------------------------|
+| `ENVIRONMENT_PRODUCTION` | `https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu` |
+| `ENVIRONMENT_SANDBOX` | `https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQRNoVerifactu` |
 
 ### Certificate Types
 
@@ -570,7 +593,7 @@ use eseperio\verifactu\services\VerifactuService;
 VerifactuService::config([
     VerifactuService::CERT_PATH_KEY => '/path/to/your/certificate.p12',
     VerifactuService::CERT_PASSWORD_KEY => 'your-certificate-password',
-    VerifactuService::WSDL_ENDPOINT => 'https://custom-endpoint.example.com',
+    VerifactuService::SOAP_ENDPOINT => 'https://custom-endpoint.example.com',
     VerifactuService::QR_VERIFICATION_URL => 'https://custom-qr-verification.example.com',
     // Add any other custom configuration options here
 ]);
