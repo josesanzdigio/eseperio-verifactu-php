@@ -84,7 +84,7 @@ class QrGeneratorService
      * @param string        $dest                Destination type (file or string)
      * @param int           $size                Resolution of the QR code in pixels
      * @param string        $engine              Renderer to use (gd, imagick, svg)
-     * @param float|null    $totalAmount         Total invoice amount; required for No VERI*FACTU, optional for VERI*FACTU
+     * @param string|int|float|null $totalAmount         Total invoice amount; required for No VERI*FACTU, optional for VERI*FACTU
      * @param int           $margin              Renderer margin (module units around QR matrix)
      * @param bool          $noVerifactu         When true, uses No VERI*FACTU URL contract (no huella, mandatory importe)
      * @return string QR image data or file path
@@ -97,7 +97,7 @@ class QrGeneratorService
         $dest = self::DESTINATION_STRING,
         $size = 300,
         $engine = self::RENDERER_GD,
-        ?float $totalAmount = null,
+        $totalAmount = null,
         int $margin = 4,
         bool $noVerifactu = false,
     ) {
@@ -135,31 +135,23 @@ class QrGeneratorService
      *
      * `formato=json` MUST NOT appear in the QR URL per AEAT specification.
      *
-     * @param string     $baseVerificationUrl Base URL for AEAT invoice verification
-     * @param float|null $totalAmount         Total invoice amount (ImporteTotal)
-     * @param bool       $noVerifactu         When true, applies No VERI*FACTU contract
+     * @param string                $baseVerificationUrl Base URL for AEAT invoice verification
+     * @param string|int|float|null $totalAmount         Total invoice amount (ImporteTotal)
+     * @param bool                  $noVerifactu         When true, applies No VERI*FACTU contract
      * @throws \InvalidArgumentException if No VERI*FACTU mode is active and totalAmount is null
      */
     protected static function buildQrContent(
         InvoiceRecord $record,
         $baseVerificationUrl,
-        ?float $totalAmount = null,
+        $totalAmount = null,
         bool $noVerifactu = false,
     ): string {
-        if ($noVerifactu && $totalAmount === null) {
-            throw new \InvalidArgumentException(
-                'importe is mandatory for No VERI*FACTU QR generation and must not be null.'
-            );
-        }
-
         $invoiceId = $record->getInvoiceId();
-        $nif    = $invoiceId->issuerNif;
-        $series = $invoiceId->seriesNumber;
+        $nif    = self::requireNonEmptyString($invoiceId?->issuerNif ?? null, 'nif');
+        $series = self::requireNonEmptyString($invoiceId?->seriesNumber ?? null, 'numserie');
         $hash   = $record->hash;
 
-        // Reformat date from internal YYYY-MM-DD to the AEAT-mandated DD-MM-YYYY.
-        // This conversion is scoped to QR output only; the XML serializer is untouched.
-        $date = self::reformatDateForQr($invoiceId->getIssueDate());
+        $date = self::reformatDateForQr($invoiceId?->getIssueDate() ?? null);
 
         $params = [
             'nif'      => $nif,
@@ -168,7 +160,9 @@ class QrGeneratorService
         ];
 
         if ($totalAmount !== null) {
-            $params['importe'] = $totalAmount;
+            $params['importe'] = self::formatQrAmount($totalAmount);
+        } elseif ($noVerifactu) {
+            throw new \InvalidArgumentException('importe is mandatory for No VERI*FACTU QR generation.');
         }
 
         // huella is suppressed in No VERI*FACTU mode; included in VERI*FACTU when available.
@@ -176,7 +170,7 @@ class QrGeneratorService
             $params['huella'] = $hash;
         }
 
-        return rtrim($baseVerificationUrl, '?') . '?' . http_build_query($params);
+        return rtrim($baseVerificationUrl, '?') . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
     }
 
     /**
@@ -186,20 +180,105 @@ class QrGeneratorService
      * This method is intentionally scoped to QR URL generation only.
      * The XML serializer performs its own date conversion independently.
      *
-     * @param string $isoDate Date in YYYY-MM-DD format
+     * @param mixed $isoDate Date in YYYY-MM-DD format
      * @return string Date in DD-MM-YYYY format
      */
-    protected static function reformatDateForQr(string $isoDate): string
+    protected static function reformatDateForQr($isoDate): string
     {
-        $parts = explode('-', $isoDate);
-
-        if (count($parts) !== 3) {
-            return $isoDate;
+        if (!is_string($isoDate) || $isoDate === '') {
+            throw new \InvalidArgumentException('fecha is required and must use YYYY-MM-DD format.');
         }
 
-        [$year, $month, $day] = $parts;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $isoDate)) {
+            throw new \InvalidArgumentException('fecha must use YYYY-MM-DD format.');
+        }
 
-        return $day . '-' . $month . '-' . $year;
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $isoDate);
+        $errors = \DateTimeImmutable::getLastErrors();
+
+        if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+            throw new \InvalidArgumentException('fecha must be a valid calendar date in YYYY-MM-DD format.');
+        }
+
+        return $date->format('d-m-Y');
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function requireNonEmptyString($value, string $field): string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            throw new \InvalidArgumentException(sprintf('%s is required and must be a non-empty string.', $field));
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param string|int|float|null $amount
+     */
+    private static function formatQrAmount($amount): string
+    {
+        if (is_bool($amount)) {
+            throw new \InvalidArgumentException('importe must not be a boolean.');
+        }
+
+        if (is_array($amount)) {
+            throw new \InvalidArgumentException('importe must not be an array.');
+        }
+
+        if (is_object($amount)) {
+            throw new \InvalidArgumentException('importe must not be an object.');
+        }
+
+        if (is_string($amount)) {
+            if ($amount === '') {
+                throw new \InvalidArgumentException('importe must not be empty.');
+            }
+
+            if (str_contains($amount, ',')) {
+                throw new \InvalidArgumentException('importe must use "." as decimal separator.');
+            }
+
+            if (!preg_match('/^(?:0|[1-9]\d*)(?:\.\d+)?$/', $amount)) {
+                throw new \InvalidArgumentException('importe must be numeric.');
+            }
+
+            $normalizedAmount = $amount;
+        } elseif (is_int($amount)) {
+            $normalizedAmount = (string) $amount;
+        } elseif (is_float($amount)) {
+            $roundedAmount = round($amount, 2);
+
+            if (abs($amount - $roundedAmount) > 0.0000001) {
+                throw new \InvalidArgumentException('importe must not contain more than 2 decimal places.');
+            }
+
+            $normalizedAmount = number_format($roundedAmount, 2, '.', '');
+            $normalizedAmount = rtrim(rtrim($normalizedAmount, '0'), '.');
+        } else {
+            throw new \InvalidArgumentException('importe must be numeric.');
+        }
+
+        if (str_starts_with($normalizedAmount, '-')) {
+            throw new \InvalidArgumentException('importe must not be negative.');
+        }
+
+        if (!preg_match('/^(?:0|[1-9]\d*)(?:\.(\d+))?$/', $normalizedAmount, $matches)) {
+            throw new \InvalidArgumentException('importe must be numeric.');
+        }
+
+        $decimals = $matches[1] ?? '';
+        if (strlen($decimals) > 2) {
+            throw new \InvalidArgumentException('importe must not contain more than 2 decimal places.');
+        }
+
+        if ($decimals === '') {
+            return $normalizedAmount;
+        }
+
+        return rtrim(rtrim($normalizedAmount, '0'), '.');
     }
 
     /**

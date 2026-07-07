@@ -101,6 +101,8 @@ class VerifactuService
      */
     public static function registerInvoice(InvoiceSubmission $invoice)
     {
+        self::assertSoapAvailable();
+
         // 1. Validate input (excluding hash which will be generated)
         $validation = $invoice->validate();
 
@@ -187,6 +189,8 @@ TXT
      */
     public static function cancelInvoice(InvoiceCancellation $cancellation)
     {
+        self::assertSoapAvailable();
+
         // 1. Validate input (excluding hash which will be generated)
         $validation = $cancellation->validate();
 
@@ -248,6 +252,8 @@ TXT
      */
     public static function queryInvoices(InvoiceQuery $query)
     {
+        self::assertSoapAvailable();
+
         $validation = $query->validate();
 
         if (!empty($validation)) {
@@ -304,13 +310,22 @@ TXT
 
         // Resolve the mandatory AEAT `importe` parameter only for invoice submissions.
         // Cancellations and other non-verifiable records carry no ImporteTotal.
-        $totalAmount = ($record instanceof InvoiceSubmission) ? (float) $record->totalAmount : null;
+        $totalAmount = ($record instanceof InvoiceSubmission) ? $record->totalAmount : null;
 
         // Determine QR mode — default to verifactu for backward compatibility.
         $qrMode = self::$config[self::QR_MODE] ?? self::QR_MODE_VERIFACTU;
         $noVerifactu = ($qrMode === self::QR_MODE_NO_VERIFACTU);
 
         return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $totalAmount, $margin, $noVerifactu);
+    }
+
+    protected static function assertSoapAvailable(): void
+    {
+        $qrMode = self::$config[self::QR_MODE] ?? self::QR_MODE_VERIFACTU;
+
+        if ($qrMode === self::QR_MODE_NO_VERIFACTU) {
+            throw new \RuntimeException('No VERI*FACTU mode is QR-only; SOAP operations are not available.');
+        }
     }
 
     // The XML helper methods (wrapXmlWithRegFactuStructure, buildInvoiceXml, buildCancellationXml, buildQueryXml)

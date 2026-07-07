@@ -8,8 +8,10 @@ use BaconQrCode\Writer;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\MockObject;
 use eseperio\verifactu\models\InvoiceId;
+use eseperio\verifactu\models\InvoiceCancellation;
 use eseperio\verifactu\models\InvoiceRecord;
 use eseperio\verifactu\models\InvoiceSubmission;
+use eseperio\verifactu\models\InvoiceQuery;
 use eseperio\verifactu\services\QrGeneratorService;
 use eseperio\verifactu\services\VerifactuService;
 use PHPUnit\Framework\TestCase;
@@ -41,23 +43,14 @@ class QrGeneratorServiceTest extends TestCase
         $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-24', 'abcdef1234567890');
 
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.00);
+        $query = $this->parseQrQuery($result);
 
-        // Must use numserie, not num
-        $this->assertStringContainsString('numserie=', $result, 'QR URL must contain numserie parameter');
-        $this->assertStringNotContainsString('num=', $result, 'QR URL must NOT contain legacy num parameter');
-
-        // fecha must be DD-MM-YYYY
-        $this->assertStringContainsString('fecha=24-06-2026', $result, 'fecha must be in DD-MM-YYYY format');
-        $this->assertStringNotContainsString('fecha=2026-06-24', $result, 'fecha must NOT be in YYYY-MM-DD format');
-
-        // importe must be present when amount is provided
-        $this->assertStringContainsString('importe=121', $result, 'importe must be present for verifiable invoices');
-
-        // nif must still be present
-        $this->assertStringContainsString('nif=B12345678', $result, 'nif must be present');
-
-        // formato=json must never appear
-        $this->assertStringNotContainsString('formato', $result, 'formato=json must NOT appear in QR URL');
+        $this->assertSame(['nif', 'numserie', 'fecha', 'importe', 'huella'], array_keys($query));
+        $this->assertSame('B12345678', $query['nif']);
+        $this->assertSame('24-06-2026', $query['fecha']);
+        $this->assertSame('121', $query['importe']);
+        $this->assertArrayNotHasKey('num', $query);
+        $this->assertArrayNotHasKey('formato', $query);
     }
 
     /**
@@ -68,12 +61,10 @@ class QrGeneratorServiceTest extends TestCase
         $record = $this->makeRecord('B12345678', 'FACT-001', '2026-06-24', 'abcdef1234567890');
 
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.00);
+        $query = $this->parseQrQuery($result);
 
-        $this->assertStringContainsString('huella=abcdef1234567890', $result, 'huella must be present when hash is set');
-
-        // Mandatory params must still be present alongside huella
-        $this->assertStringContainsString('numserie=', $result);
-        $this->assertStringContainsString('importe=121', $result);
+        $this->assertSame('abcdef1234567890', $query['huella']);
+        $this->assertSame('121', $query['importe']);
     }
 
     /**
@@ -89,10 +80,11 @@ class QrGeneratorServiceTest extends TestCase
         $record = $this->makeRecord('A00000001', 'SER/2026/001', '2026-06-24', null);
 
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.4);
+        $query = $this->parseQrQuery($result);
 
-        $this->assertStringContainsString('fecha=24-06-2026', $result);
-        $this->assertStringContainsString('importe=121.4', $result);
-        $this->assertStringNotContainsString('huella', $result, 'huella must be absent when hash is null');
+        $this->assertSame('24-06-2026', $query['fecha']);
+        $this->assertSame('121.4', $query['importe']);
+        $this->assertArrayNotHasKey('huella', $query);
     }
 
     public function testBuildQrContentNormalizesDateTimeIssueDate(): void
@@ -102,8 +94,7 @@ class QrGeneratorServiceTest extends TestCase
 
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 121.4);
 
-        $this->assertStringContainsString('fecha=24-06-2026', $result);
-        $this->assertStringNotContainsString('fecha=2026-06-24', $result);
+        $this->assertSame('24-06-2026', $this->parseQrQuery($result)['fecha']);
     }
 
     /**
@@ -162,17 +153,11 @@ class QrGeneratorServiceTest extends TestCase
 
         // Pass null for totalAmount — simulates a non-submission or cancellation record
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', null);
+        $query = $this->parseQrQuery($result);
 
-        $this->assertStringNotContainsString('importe', $result, 'importe must be absent when totalAmount is null');
-
-        // huella should still be present (hash was set)
-        $this->assertStringContainsString('huella=abcdef1234567890', $result);
-
-        // numserie must be present (AEAT param name)
-        $this->assertStringContainsString('numserie=', $result);
-
-        // no legacy num
-        $this->assertStringNotContainsString('num=', $result);
+        $this->assertArrayNotHasKey('importe', $query);
+        $this->assertSame('abcdef1234567890', $query['huella']);
+        $this->assertArrayNotHasKey('num', $query);
     }
 
     /**
@@ -184,14 +169,12 @@ class QrGeneratorServiceTest extends TestCase
         $record = $this->makeRecord('B12345678', 'FACT-001', '2023-01-01', null);
 
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', null);
+        $query = $this->parseQrQuery($result);
 
-        $this->assertStringNotContainsString('huella', $result);
-        $this->assertStringNotContainsString('importe', $result);
-        $this->assertStringContainsString('nif=B12345678', $result);
-        $this->assertStringContainsString('numserie=FACT-001', $result);
-        $this->assertStringContainsString('fecha=01-01-2023', $result);
-        $this->assertStringNotContainsString('num=', $result);
-        $this->assertStringNotContainsString('formato', $result);
+        $this->assertSame(['nif', 'numserie', 'fecha'], array_keys($query));
+        $this->assertSame('B12345678', $query['nif']);
+        $this->assertSame('FACT-001', $query['numserie']);
+        $this->assertSame('01-01-2023', $query['fecha']);
     }
 
     // -------------------------------------------------------------------------
@@ -212,7 +195,7 @@ class QrGeneratorServiceTest extends TestCase
             'nif'      => 'B12345678',
             'numserie' => 'FACT-001',
             'fecha'    => '01-01-2023',
-        ]);
+        ], '', '&', PHP_QUERY_RFC3986);
         $expected = 'https://example.com/verify?' . $expectedParams;
 
         $this->assertEquals($expected, $result);
@@ -232,7 +215,7 @@ class QrGeneratorServiceTest extends TestCase
             'numserie' => 'FACT-001',
             'fecha'    => '01-01-2023',
             'huella'   => 'abcdef1234567890',
-        ]);
+        ], '', '&', PHP_QUERY_RFC3986);
         $expected = 'https://example.com/verify?' . $expectedParams;
 
         $this->assertEquals($expected, $result);
@@ -368,17 +351,16 @@ class QrGeneratorServiceTest extends TestCase
         $record = $this->makeRecord('B12345678', 'FACT-NOVERIF-001', '2026-06-30', 'somehash');
 
         $result = $this->invokeBuildQrContentNoVerifactu($record, 'https://example.com/noverif', 121.4);
+        $query = $this->parseQrQuery($result);
 
-        // Mandatory params
-        $this->assertStringContainsString('nif=B12345678', $result);
-        $this->assertStringContainsString('numserie=', $result);
-        $this->assertStringContainsString('fecha=30-06-2026', $result);
-        $this->assertStringContainsString('importe=121.4', $result);
-
-        // Forbidden params
-        $this->assertStringNotContainsString('huella', $result, 'No VERI*FACTU must NOT emit huella');
-        $this->assertStringNotContainsString('num=', $result, 'No VERI*FACTU must NOT degrade numserie to num');
-        $this->assertStringNotContainsString('formato', $result, 'No VERI*FACTU must NOT emit formato=json');
+        $this->assertSame(['nif', 'numserie', 'fecha', 'importe'], array_keys($query));
+        $this->assertSame('B12345678', $query['nif']);
+        $this->assertSame('FACT-NOVERIF-001', $query['numserie']);
+        $this->assertSame('30-06-2026', $query['fecha']);
+        $this->assertSame('121.4', $query['importe']);
+        $this->assertArrayNotHasKey('huella', $query);
+        $this->assertArrayNotHasKey('num', $query);
+        $this->assertArrayNotHasKey('formato', $query);
     }
 
     /**
@@ -410,14 +392,14 @@ class QrGeneratorServiceTest extends TestCase
 
         // Standard VERI*FACTU call (noVerifactu = false, which is the default)
         $result = $this->invokeBuildQrContent($record, 'https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR', 99.9);
+        $query = $this->parseQrQuery($result);
 
-        $this->assertStringContainsString('nif=A87654321', $result);
-        $this->assertStringContainsString('numserie=', $result);
-        $this->assertStringContainsString('fecha=15-01-2026', $result);
-        $this->assertStringContainsString('importe=99.9', $result);
-        $this->assertStringContainsString('huella=verifactuhash', $result);
-        $this->assertStringNotContainsString('num=', $result);
-        $this->assertStringNotContainsString('formato', $result);
+        $this->assertSame('A87654321', $query['nif']);
+        $this->assertSame('15-01-2026', $query['fecha']);
+        $this->assertSame('99.9', $query['importe']);
+        $this->assertSame('verifactuhash', $query['huella']);
+        $this->assertArrayNotHasKey('num', $query);
+        $this->assertArrayNotHasKey('formato', $query);
     }
 
     /**
@@ -429,10 +411,11 @@ class QrGeneratorServiceTest extends TestCase
         $record = $this->makeRecord('A87654321', 'SER/2026/099', '2026-01-15', null);
 
         $result = $this->invokeBuildQrContent($record, 'https://example.com/verify', 50.0);
+        $query = $this->parseQrQuery($result);
 
-        $this->assertStringNotContainsString('huella', $result);
-        $this->assertStringContainsString('nif=A87654321', $result);
-        $this->assertStringContainsString('numserie=', $result);
+        $this->assertArrayNotHasKey('huella', $query);
+        $this->assertSame('A87654321', $query['nif']);
+        $this->assertSame('SER/2026/099', $query['numserie']);
     }
 
     /**
@@ -447,6 +430,142 @@ class QrGeneratorServiceTest extends TestCase
         $result = $this->invokeBuildQrContentNoVerifactu($record, $noVerifactuBaseUrl, 50.0);
 
         $this->assertStringStartsWith($noVerifactuBaseUrl . '?', $result);
+    }
+
+    public function testBuildQrContentRejectsMissingNif(): void
+    {
+        $record = $this->makeRecord('', 'FACT-001', '2026-07-01', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/nif/i');
+
+        $this->invokeBuildQrContent($record, 'https://example.com/verify', 121);
+    }
+
+    public function testBuildQrContentRejectsMissingNumserie(): void
+    {
+        $record = $this->makeRecord('B12345678', '', '2026-07-01', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/numserie/i');
+
+        $this->invokeBuildQrContent($record, 'https://example.com/verify', 121);
+    }
+
+    public function testReformatDateForQrAcceptsStrictIsoDate(): void
+    {
+        $this->assertSame('01-07-2026', $this->invokeReformatDateForQr('2026-07-01'));
+    }
+
+    public function testReformatDateForQrRejectsInvalidDates(): void
+    {
+        foreach (['2026-02-31', '2026-7-1', 'not-a-date', ''] as $date) {
+            try {
+                $this->invokeReformatDateForQr($date);
+                $this->fail(sprintf('Expected invalid date failure for "%s".', $date));
+            } catch (\InvalidArgumentException $exception) {
+                $this->assertStringContainsString('fecha', $exception->getMessage());
+            }
+        }
+    }
+
+    public function testAmountNormalizationVariants(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-07-01', null);
+
+        $this->assertSame('121', $this->parseQrQuery($this->invokeBuildQrContent($record, 'https://example.com/verify', 121))['importe']);
+        $this->assertSame('121.4', $this->parseQrQuery($this->invokeBuildQrContent($record, 'https://example.com/verify', 121.4))['importe']);
+        $this->assertSame('121.4', $this->parseQrQuery($this->invokeBuildQrContentRawAmount($record, 'https://example.com/verify', '121.40'))['importe']);
+        $this->assertSame('0.01', $this->parseQrQuery($this->invokeBuildQrContent($record, 'https://example.com/verify', 0.01))['importe']);
+    }
+
+    public function testAmountNormalizationRejectsInvalidValues(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-07-01', null);
+
+        foreach (['121,40', '', 'abc', '1.234', -1] as $amount) {
+            try {
+                $this->invokeBuildQrContentRawAmount($record, 'https://example.com/verify', $amount);
+                $this->fail(sprintf('Expected invalid amount failure for "%s".', is_scalar($amount) ? (string) $amount : gettype($amount)));
+            } catch (\InvalidArgumentException $exception) {
+                $this->assertStringContainsString('importe', $exception->getMessage());
+            }
+        }
+    }
+
+    public function testAmountNormalizationRejectsArray(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-07-01', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('importe must not be an array.');
+
+        $this->invokeBuildQrContentRawAmount($record, 'https://example.com/verify', [100, 200]);
+    }
+
+    public function testAmountNormalizationRejectsObject(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-07-01', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('importe must not be an object.');
+
+        $this->invokeBuildQrContentRawAmount($record, 'https://example.com/verify', new \stdClass());
+    }
+
+    public function testAmountNormalizationRejectsBoolTrue(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-07-01', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('importe must not be a boolean.');
+
+        $this->invokeBuildQrContentRawAmount($record, 'https://example.com/verify', true);
+    }
+
+    public function testAmountNormalizationRejectsBoolFalse(): void
+    {
+        $record = $this->makeRecord('B12345678', 'FACT-001', '2026-07-01', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('importe must not be a boolean.');
+
+        $this->invokeBuildQrContentRawAmount($record, 'https://example.com/verify', false);
+    }
+
+    public function testBuildQrContentUsesRfc3986EncodingForNumserie(): void
+    {
+        $record = $this->makeRecord('B12345678', '12345678&G33', '2026-07-01', null);
+
+        $result = $this->invokeBuildQrContentNoVerifactu($record, 'https://example.com/noverif', 121);
+
+        $this->assertStringContainsString('numserie=12345678%26G33', $result);
+        $this->assertSame('12345678&G33', $this->parseQrQuery($result)['numserie']);
+    }
+
+    public function testSoapOperationsAreBlockedInNoVerifactuMode(): void
+    {
+        VerifactuService::config([
+            VerifactuService::QR_VERIFICATION_URL => 'https://example.com/noverif',
+            VerifactuService::QR_MODE => VerifactuService::QR_MODE_NO_VERIFACTU,
+        ]);
+
+        $submission = new InvoiceSubmission();
+        $cancellation = new InvoiceCancellation();
+        $query = new InvoiceQuery();
+
+        foreach ([
+            static fn() => VerifactuService::registerInvoice($submission),
+            static fn() => VerifactuService::cancelInvoice($cancellation),
+            static fn() => VerifactuService::queryInvoices($query),
+        ] as $operation) {
+            try {
+                $operation();
+                $this->fail('Expected SOAP operation to be blocked in No VERI*FACTU mode.');
+            } catch (\RuntimeException $exception) {
+                $this->assertSame('No VERI*FACTU mode is QR-only; SOAP operations are not available.', $exception->getMessage());
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -481,7 +600,7 @@ class QrGeneratorServiceTest extends TestCase
             'numserie' => 'FACT-001',
             'fecha' => '30-06-2026',
             'importe' => 50.0,
-        ]);
+        ], '', '&', PHP_QUERY_RFC3986);
 
         $writerL = new \BaconQrCode\Writer(
             new \BaconQrCode\Renderer\ImageRenderer(
@@ -554,7 +673,7 @@ class QrGeneratorServiceTest extends TestCase
             'numserie' => 'SER/2026/001',
             'fecha' => '30-06-2026',
             'importe' => 99.0,
-        ]);
+        ], '', '&', PHP_QUERY_RFC3986);
 
         $refWriterDefault = new \BaconQrCode\Writer(
             new \BaconQrCode\Renderer\ImageRenderer(
@@ -629,7 +748,7 @@ class QrGeneratorServiceTest extends TestCase
     private function invokeBuildQrContent(
         InvoiceRecord $record,
         string $baseUrl,
-        ?float $totalAmount
+        $totalAmount
     ): string {
         $rc     = new \ReflectionClass(QrGeneratorService::class);
         $method = $rc->getMethod('buildQrContent');
@@ -644,12 +763,39 @@ class QrGeneratorServiceTest extends TestCase
     private function invokeBuildQrContentNoVerifactu(
         InvoiceRecord $record,
         string $baseUrl,
-        ?float $totalAmount
+        $totalAmount
     ): string {
         $rc     = new \ReflectionClass(QrGeneratorService::class);
         $method = $rc->getMethod('buildQrContent');
         $method->setAccessible(true);
 
         return (string) $method->invoke(null, $record, $baseUrl, $totalAmount, true);
+    }
+
+    private function invokeBuildQrContentRawAmount(
+        InvoiceRecord $record,
+        string $baseUrl,
+        $totalAmount
+    ): string {
+        return $this->invokeBuildQrContent($record, $baseUrl, $totalAmount);
+    }
+
+    private function invokeReformatDateForQr($date): string
+    {
+        $rc = new \ReflectionClass(QrGeneratorService::class);
+        $method = $rc->getMethod('reformatDateForQr');
+        $method->setAccessible(true);
+
+        return (string) $method->invoke(null, $date);
+    }
+
+    private function parseQrQuery(string $url): array
+    {
+        $query = parse_url($url, PHP_URL_QUERY);
+        $this->assertIsString($query);
+
+        parse_str($query, $params);
+
+        return $params;
     }
 }

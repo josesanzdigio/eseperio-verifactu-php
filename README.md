@@ -87,6 +87,24 @@ Install via Composer:
 composer require eseperio/verifactu-php
 ```
 
+To consume this fork directly from Composer, prefer a tagged release from the fork repository:
+
+```json
+{
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/josesanzdigio/eseperio-verifactu-php"
+    }
+  ],
+  "require": {
+    "eseperio/verifactu-php": "<tag-or-constraint>"
+  }
+}
+```
+
+`composer.json` currently declares `"minimum-stability": "dev"`; for production consumption, prefer requiring an explicit tag or pinned version constraint instead of an unbounded dev branch.
+
 ```bash
 composer require bacon/bacon-qr-code
 composer require robrichards/xmlseclibs
@@ -137,6 +155,13 @@ Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
 
 After calling `configNoVerifactu()`, calls to `Verifactu::generateInvoiceQr()` will produce a No VERI\*FACTU QR
 pointing to the AEAT No VERI\*FACTU validation endpoint.
+
+No VERI\*FACTU QR contract:
+
+* Required query keys: `nif`, `numserie`, `fecha`, `importe`
+* Forbidden query keys: `huella`, `formato=json`, `num`
+* `fecha` is emitted strictly as `DD-MM-YYYY`
+* `importe` is mandatory and must be a valid non-negative amount with at most two decimals
 
 ---
 
@@ -471,7 +496,7 @@ $qrData = Verifactu::generateInvoiceQr($invoice);
 ```
 
 > **No VERI\*FACTU URL contract**: the QR URL includes `nif`, `numserie`, `fecha` (DD-MM-YYYY format),
-> and `importe`. It never includes `huella` or `formato=json`. `importe` is mandatory — generation
+> and `importe`. It never includes `huella`, `formato=json`, or `num`. `importe` is mandatory — generation
 > fails if `totalAmount` is not set on the invoice record.
 
 #### Advanced QR options (via `QrGeneratorService` directly)
@@ -557,7 +582,7 @@ Verifactu::config(
 ### `Verifactu::configNoVerifactu()` — No VERI\*FACTU (QR only)
 
 For invoicing software not required to submit to AEAT. **No certificate or SOAP configuration is required.**
-Only `Verifactu::generateInvoiceQr()` is available in this mode — register/cancel/query are not.
+Only `Verifactu::generateInvoiceQr()` is available in this mode — register/cancel/query are not and now fail explicitly.
 
 ```php
 Verifactu::configNoVerifactu(

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace eseperio\verifactu\tests\Unit;
 
 use eseperio\verifactu\Verifactu;
+use eseperio\verifactu\models\InvoiceId;
+use eseperio\verifactu\models\InvoiceQuery;
+use eseperio\verifactu\models\InvoiceSubmission;
+use eseperio\verifactu\services\QrGeneratorService;
 use eseperio\verifactu\services\VerifactuService;
 use PHPUnit\Framework\TestCase;
 
@@ -100,6 +104,7 @@ class VerifactuTest extends TestCase
     public function testConfigNoVerifactuThrowsOnInvalidEnvironment(): void
     {
         $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid environment: invalid_env');
 
         Verifactu::configNoVerifactu('invalid_env');
     }
@@ -118,5 +123,65 @@ class VerifactuTest extends TestCase
             $mode,
             'config() must store qrMode=verifactu (the default VERI*FACTU mode)'
         );
+    }
+
+    public function testGenerateInvoiceQrAfterConfigNoVerifactuUsesNoHuellaAndRequiresImporte(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+        $invoice->hash = 'hash-should-not-appear';
+
+        $svg = VerifactuService::generateInvoiceQr(
+            $invoice,
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG
+        );
+
+        $expectedSvg = QrGeneratorService::generateQr(
+            $invoice,
+            Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_TEST,
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG,
+            121.4,
+            4,
+            true
+        );
+
+        $this->assertSame($expectedSvg, $svg);
+        $this->assertStringContainsString('<svg', $svg);
+
+        $invoiceWithoutAmount = new InvoiceSubmission();
+        $invoiceWithoutAmount->setInvoiceId($invoiceId);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/importe/i');
+
+        VerifactuService::generateInvoiceQr(
+            $invoiceWithoutAmount,
+            QrGeneratorService::DESTINATION_STRING,
+            300,
+            QrGeneratorService::RENDERER_SVG
+        );
+    }
+
+    public function testSoapFacadeOperationsAreBlockedInNoVerifactuMode(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
+
+        $query = new InvoiceQuery();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('No VERI*FACTU mode is QR-only; SOAP operations are not available.');
+
+        Verifactu::queryInvoices($query);
     }
 }
