@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sf:RegistroAnulacion xmlns:sf="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd">
+  <sf:IDVersion>1.0</sf:IDVersion>
+  <sf:IDFactura>
+    <sf:IDEmisorFacturaAnulada>B12345678</sf:IDEmisorFacturaAnulada>
+    <sf:NumSerieFacturaAnulada>CANCEL-001</sf:NumSerieFacturaAnulada>
+    <sf:FechaExpedicionFacturaAnulada>10-03-2025</sf:FechaExpedicionFacturaAnulada>
+  </sf:IDFactura>
+  <sf:RechazoPrevio>N</sf:RechazoPrevio>
+  <sf:Encadenamiento>
+    <sf:PrimerRegistro>S</sf:PrimerRegistro>
+  </sf:Encadenamiento>
+  <sf:SistemaInformatico>
+    <sf:NombreRazon>Proveedor Sistema</sf:NombreRazon>
+    <sf:NIF>B12345678</sf:NIF>
+    <sf:NombreSistemaInformatico>Sistema</sf:NombreSistemaInformatico>
+    <sf:IdSistemaInformatico>01</sf:IdSistemaInformatico>
+    <sf:Version>1.0</sf:Version>
+    <sf:NumeroInstalacion>1</sf:NumeroInstalacion>
+    <sf:TipoUsoPosibleSoloVerifactu>S</sf:TipoUsoPosibleSoloVerifactu>
+    <sf:TipoUsoPosibleMultiOT>N</sf:TipoUsoPosibleMultiOT>
+    <sf:IndicadorMultiplesOT>N</sf:IndicadorMultiplesOT>
+  </sf:SistemaInformatico>
+  <sf:FechaHoraHusoGenRegistro>2025-03-10T09:00:00+01:00</sf:FechaHoraHusoGenRegistro>
+  <sf:TipoHuella>01</sf:TipoHuella>
+  <sf:Huella>FAB1AC6515C60484C81E88A2CA3401A6AAC29C1CBD4FB152C2C3EA3978924878</sf:Huella>
+</sf:RegistroAnulacion>

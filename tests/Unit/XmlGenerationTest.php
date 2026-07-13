@@ -43,10 +43,7 @@ class XmlGenerationTest extends TestCase
         
         // Generate XML
         $xml = $invoice->toXml();
-        
-        // Output XML for inspection
         $xmlString = $xml->saveXML();
-        echo "Generated XML:\n" . $xmlString . "\n";
         
         // Check if the Desglose element exists (use namespace-aware search)
         $ns = 'https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd';

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sf:RegistroAlta xmlns:sf="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd">
+  <sf:IDVersion>1.0</sf:IDVersion>
+  <sf:IDFactura>
+    <sf:IDEmisorFactura>B12345678</sf:IDEmisorFactura>
+    <sf:NumSerieFactura>TEST-001</sf:NumSerieFactura>
+    <sf:FechaExpedicionFactura>15-01-2025</sf:FechaExpedicionFactura>
+  </sf:IDFactura>
+  <sf:NombreRazonEmisor>Emisor Ejemplo SL</sf:NombreRazonEmisor>
+  <sf:TipoFactura>F1</sf:TipoFactura>
+  <sf:DescripcionOperacion>Operación de prueba</sf:DescripcionOperacion>
+  <sf:Destinatarios>
+    <sf:IDDestinatario>
+      <sf:NombreRazon>Cliente Ejemplo SL</sf:NombreRazon>
+      <sf:NIF>87654321X</sf:NIF>
+    </sf:IDDestinatario>
+  </sf:Destinatarios>
+  <sf:Desglose>
+    <sf:DetalleDesglose>
+      <sf:CalificacionOperacion>S1</sf:CalificacionOperacion>
+      <sf:TipoImpositivo>21.00</sf:TipoImpositivo>
+      <sf:BaseImponibleOimporteNoSujeto>100.00</sf:BaseImponibleOimporteNoSujeto>
+      <sf:CuotaRepercutida>21.00</sf:CuotaRepercutida>
+    </sf:DetalleDesglose>
+  </sf:Desglose>
+  <sf:CuotaTotal>21.00</sf:CuotaTotal>
+  <sf:ImporteTotal>121.00</sf:ImporteTotal>
+  <sf:Encadenamiento>
+    <sf:PrimerRegistro>S</sf:PrimerRegistro>
+  </sf:Encadenamiento>
+  <sf:SistemaInformatico>
+    <sf:NombreRazon>Proveedor Sistema</sf:NombreRazon>
+    <sf:NIF>B12345678</sf:NIF>
+    <sf:NombreSistemaInformatico>Sistema</sf:NombreSistemaInformatico>
+    <sf:IdSistemaInformatico>01</sf:IdSistemaInformatico>
+    <sf:Version>1.0</sf:Version>
+    <sf:NumeroInstalacion>1</sf:NumeroInstalacion>
+    <sf:TipoUsoPosibleSoloVerifactu>S</sf:TipoUsoPosibleSoloVerifactu>
+    <sf:TipoUsoPosibleMultiOT>N</sf:TipoUsoPosibleMultiOT>
+    <sf:IndicadorMultiplesOT>N</sf:IndicadorMultiplesOT>
+  </sf:SistemaInformatico>
+  <sf:FechaHoraHusoGenRegistro>2025-01-15T10:30:00+01:00</sf:FechaHoraHusoGenRegistro>
+  <sf:TipoHuella>01</sf:TipoHuella>
+  <sf:Huella>D1347DC346A5AE123C4A473D3343FD77E06BA115C9A2EEA31664C6D230FFD900</sf:Huella>
+</sf:RegistroAlta>
