@@ -173,6 +173,25 @@ class VerifactuTest extends TestCase
         );
     }
 
+    public function testGenerateNoVerifactuQrIsExplicitAliasForGenerateInvoiceQr(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+
+        $explicitQr = Verifactu::generateNoVerifactuQr($invoice);
+        $standardQr = Verifactu::generateInvoiceQr($invoice);
+
+        $this->assertSame($standardQr, $explicitQr);
+        $this->assertNotEmpty($explicitQr);
+    }
+
     public function testSoapFacadeOperationsAreBlockedInNoVerifactuMode(): void
     {
         Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);

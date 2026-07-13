@@ -466,6 +466,9 @@ if ($result->queryStatus === \eseperio\verifactu\models\QueryResponse::STATUS_OK
 determined by which config method was called (`config()` or `configNoVerifactu()`). All QR codes use AEAT-compliant
 error correction level M.
 
+For No VERI\*FACTU, you can also use the explicit method
+`Verifactu::generateNoVerifactuQr($invoice)` — it makes the mode clear at the call site.
+
 #### VERI\*FACTU QR
 
 After calling `Verifactu::config(...)` and submitting an invoice to receive a CSV:
@@ -492,7 +495,7 @@ Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
 
 // $invoice must have issuerNif (nif), seriesNumber (numserie), issueDate (fecha),
 // and totalAmount (importe). huella is never included in No VERI*FACTU QR URLs.
-$qrData = Verifactu::generateInvoiceQr($invoice);
+$qrData = Verifactu::generateNoVerifactuQr($invoice);
 ```
 
 > **No VERI\*FACTU URL contract**: the QR URL includes `nif`, `numserie`, `fecha` (DD-MM-YYYY format),
