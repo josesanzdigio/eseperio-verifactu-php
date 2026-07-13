@@ -62,7 +62,7 @@ invoicing system, including:
 * Built-in XML signature (XAdES enveloped) and hash calculation
 * Error translation using the official AEAT code dictionary
 
-It is designed for easy Composer-based installation and seamless integration into any modern PHP 8.0+ application.
+It is designed for easy Composer-based installation and seamless integration into any modern PHP 8.1+ application.
 
 ---
 
@@ -98,17 +98,20 @@ To consume this fork directly from Composer, prefer a tagged release from the fo
     }
   ],
   "require": {
-    "eseperio/verifactu-php": "<tag-or-constraint>"
+    "eseperio/verifactu-php": "2.0.0"
   }
 }
 ```
 
-`composer.json` currently declares `"minimum-stability": "dev"`; for production consumption, prefer requiring an explicit tag or pinned version constraint instead of an unbounded dev branch.
+The package name (`eseperio/verifactu-php`) is retained for drop-in Composer dependency replacement through the VCS override. The Composer package name and PHP namespace are independent — retaining the package name does not require retaining the namespace, and vice-versa. This fork cannot be published to Packagist under the same name; `sym-core` must keep the VCS repository entry.
 
-```bash
-composer require bacon/bacon-qr-code
-composer require robrichards/xmlseclibs
+For production use **after the `2.0.0` tag exists**, pin the exact version:
+
+```json
+"eseperio/verifactu-php": "2.0.0"
 ```
+
+Development-only installations may use `"dev-master as 2.0.0"` via inline alias.
 
 ---
 
@@ -161,7 +164,7 @@ No VERI\*FACTU QR contract:
 * Required query keys: `nif`, `numserie`, `fecha`, `importe`
 * Forbidden query keys: `huella`, `formato=json`, `num`
 * `fecha` is emitted strictly as `DD-MM-YYYY`
-* `importe` is mandatory and must be a valid non-negative amount with at most two decimals
+* `importe` is mandatory and must be a valid amount with at most two decimals (negative values are accepted for credit notes and rectifications)
 
 ---
 
@@ -510,7 +513,7 @@ For custom size, margin, or renderer, call `QrGeneratorService::generateQr()` di
 use eseperio\verifactu\services\QrGeneratorService;
 use eseperio\verifactu\services\VerifactuService;
 
-$baseUrl = VerifactuService::getConfig()[VerifactuService::QR_VERIFICATION_URL];
+$baseUrl = VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL);
 
 // SVG, 400 px, margin 6
 $svgData = QrGeneratorService::generateQr(
@@ -519,12 +522,11 @@ $svgData = QrGeneratorService::generateQr(
     QrGeneratorService::DESTINATION_STRING,
     400,                               // size in pixels
     QrGeneratorService::RENDERER_SVG,
-    $invoice->totalAmount,             // required for No VERI*FACTU; optional for VERI*FACTU
-    6,                                 // margin (default: 4)
-    false                              // noVerifactu flag (set true for No VERI*FACTU)
+    $invoice->totalAmount,             // mandatory for all modes
+    6                                  // margin (default: 4)
 );
 
-// Save to file
+// Save to file (PNG default)
 $path = QrGeneratorService::generateQr(
     $invoice,
     $baseUrl,
@@ -877,6 +879,18 @@ Proper error handling is essential for a robust integration with AEAT Verifactu.
 
 ---
 
+## Limitations
+
+- **NIF validation**: The library performs structural NIF validation (length, printable ASCII) but does **not** apply the full Spanish NIF checksum algorithm. Integrators should validate NIFs upstream if required.
+- **Imagick is optional**: Tests using the Imagick QR renderer are skipped when the extension is unavailable. The GD and SVG renderers work without Imagick.
+- **Integration tests require sandbox credentials**: Tests that contact AEAT need a valid sandbox certificate and `.env` configuration. Unit tests never contact AEAT and require no certificate.
+- **No `composer.lock`**: This is a library; the lock file is intentionally excluded from version control. Consumers resolve dependencies per their own constraints.
+- **No legal certification**: The library is aligned with the referenced AEAT technical QR specification but is **not certified or endorsed by AEAT**. Use in production is at the integrator's own risk.
+- **PHP 8.1 minimum**: The library requires PHP 8.1 or later. PHP 8.0 is not supported.
+- **Cancellation records cannot generate QRs**: Only `InvoiceSubmission` records are accepted by QR generation.
+
+---
+
 ## Contributing
 
 * Open issues or pull requests with improvements, bugfixes, or feature requests.
@@ -982,6 +996,8 @@ They use the AEAT sandbox environment only — never production.
 
 > **Note:** Some tests that require a real certificate (SoapClient, XmlSigner) are skipped when
 > no certificate is available. This is expected and does not indicate a problem.
+> Tests using the Imagick QR renderer (6 tests) are skipped when the PHP `imagick` extension
+> is not installed inside the Docker image — this is expected and does not affect coverage.
 
 ### Alternative: Native testing
 

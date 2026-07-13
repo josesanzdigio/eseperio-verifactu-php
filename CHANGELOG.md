@@ -2,6 +2,64 @@
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-07-13
+
+### Added
+
+- No VERI\*FACTU configuration and QR generation mode (`Verifactu::configNoVerifactu()`).
+- Explicit `Verifactu::generateNoVerifactuQr()` method for mode-clarified call sites.
+- Real QR round-trip tests (generate → decode → assert contract).
+- Reproducible Docker test environment (PHP 8.1, Composer 2.12, `make build` / `make test-unit`).
+- Deterministic XML fixtures for standard registration, rectification and cancellation.
+- Fixed hash vectors for SHA-256 chaining verification.
+- Three-record chaining regression tests across cancellation boundaries.
+- Local XMLDSIG schema (`src/schemes/xmldsig-core-schema.xsd`) for offline XSD validation.
+- `SchemaValidatorHelper` for XSD-local validation without remote schema dependency.
+- Local/offline XSD validation support.
+- `QrRegressionIsolationTest` proving QR output never contains `huella`, `formato=json` or `num`.
+- DateTime invoice date input support with normalization in the serializer.
+
+### Changed
+
+- Unified QR URL contract for both VERI\*FACTU and No VERI\*FACTU modes (shared `nif`, `numserie`, `fecha`, `importe` keys).
+- `importe` is now mandatory in QR URLs for all invoice submission records.
+- `fecha` in QR URLs strictly formatted as `DD-MM-YYYY` (AEAT requirement).
+- QR writer encoding set to `UTF-8` (explicit `$writer->writeString(…, 'UTF-8')`).
+- Stronger NIF validation (exactly 9 printable ASCII characters).
+- Stronger `numserie` validation (1–60 printable ASCII characters, no empty strings).
+- Stronger monetary amount validation (finite check, 12 integer / 2 decimal limit, negative support).
+- Negative total amounts now supported for credit notes and rectifications.
+- SOAP operations (register, cancel, query) blocked in No VERI\*FACTU mode with explicit `\RuntimeException`.
+- Safe XML text-node creation (`createTextNode` instead of string interpolation) throughout `InvoiceSerializer`.
+- `InvoiceSerializer::escapeXmlValue()` removed — all escaping now delegated to DOM's native `createTextNode`.
+- `QrGeneratorService::generateQr()` signature: `$noVerifactu` boolean argument removed. Mode is now derived from the service configuration.
+
+### Fixed
+
+- `huella` incorrectly included in VERI\*FACTU QR URLs — removed per AEAT QR specification.
+- Optional `importe` in VERI\*FACTU QR URLs — now mandatory as required by AEAT.
+- QR parameter `num` renamed to `numserie` to match AEAT `NumSerieFactura`.
+- XML fields losing content when values contained `&`, `<`, `>` or other special characters.
+- Non-finite monetary values (`NaN`, `INF`) now rejected with explicit error.
+- Remote schema dependency removed — XSD validation fully local.
+- PHPUnit deprecation warnings eliminated.
+- `echo` debug output removed from test code.
+- `fechaFinVeriFactu` serialization guard for empty values.
+- README PHP version corrected from `8.0+` to `8.1+` to match existing constraint.
+
+### Breaking changes (vs. previous base)
+
+- **QR URL contract changed**: `num` → `numserie`, `fecha` now `DD-MM-YYYY`, `importe` mandatory.
+- **`huella` removed** from all QR URLs.
+- **Cancellation records** (`InvoiceCancellation`) rejected by `generateInvoiceQr()`.
+- **Mode guard**: `generateNoVerifactuQr()` throws `\LogicException` unless `configNoVerifactu()` was called.
+- **Removed `$noVerifactu` argument** from `QrGeneratorService::generateQr()` — pass mode via `VerifactuService` configuration.
+- **Stricter NIF validation**: exactly 9 printable ASCII characters.
+- **Stricter `numserie` validation**: 1–60 printable ASCII, no empty/whitespace-only.
+- **Negative totals supported**: previously rejected; consumers parsing QR amounts must handle negative values.
+- **`InvoiceCancellation` cannot generate QRs** — only `InvoiceSubmission` records are accepted.
+- **SOAP operations blocked** in No VERI\*FACTU mode with explicit exception.
+
 ### QR AEAT compliance fix (2026-06-24)
 
 - **[QR] `numserie` parameter** — The QR URL parameter `num` has been renamed to `numserie`
