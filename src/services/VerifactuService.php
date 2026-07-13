@@ -55,9 +55,12 @@ class VerifactuService
     }
 
     /** Gets a configuration parameter. @param string $param @return mixed @throws \InvalidArgumentException */
-    public static function getConfig($param)
+    public static function getConfig($param, $default = null)
     {
         if (!isset(self::$config[$param])) {
+            if (func_num_args() >= 2) {
+                return $default;
+            }
             throw new \InvalidArgumentException("Configuration parameter '$param' is not defined.");
         }
 
@@ -281,42 +284,35 @@ TXT
     /**
      * Generates a QR code for the provided invoice.
      *
-     * For `InvoiceSubmission` records the mandatory AEAT `importe` parameter is
-     * resolved from `$record->totalAmount` and threaded into QR generation.
-     * For all other record types (e.g. `InvoiceCancellation`) no amount is
-     * synthesised — `importe` is simply omitted from the QR URL.
+     * The record must be an `InvoiceSubmission` — only issued invoices carry
+     * an `ImporteTotal` that is required in the QR URL.
      *
      * The configured `QR_VERIFICATION_URL` (production or test endpoint) is used
      * as the base URL and remains unchanged by this method.
      *
-     * When the service is configured in No VERI*FACTU mode (`qrMode = no_verifactu`),
-     * the QR generator uses the No VERI*FACTU URL contract (no `huella`, mandatory `importe`).
-     *
-     * @param string $destination Destination type (file or string)
-     * @param int    $size        Resolution of the QR code
-     * @param string $engine      Renderer to use (gd, imagick, svg)
-     * @param int    $margin      Renderer margin (passed through to QR generator)
+     * @param InvoiceRecord     $record      Invoice record (must be InvoiceSubmission)
+     * @param string            $destination Destination type (file or string)
+     * @param int               $size        Resolution of the QR code
+     * @param string            $engine      Renderer to use (gd, imagick, svg)
+     * @param int               $margin      Renderer margin
      * @return string QR image data or file path
+     * @throws \InvalidArgumentException if record is not an InvoiceSubmission
      */
     public static function generateInvoiceQr(
         InvoiceRecord $record,
-                      $destination = QrGeneratorService::DESTINATION_STRING,
-                      $size = 300,
-                      $engine = QrGeneratorService::RENDERER_GD,
-                      int $margin = 4
+                       $destination = QrGeneratorService::DESTINATION_STRING,
+                       $size = 300,
+                       $engine = QrGeneratorService::RENDERER_GD,
+                       int $margin = 4
     )
     {
+        if (!($record instanceof InvoiceSubmission)) {
+            throw new \InvalidArgumentException('QR generation requires an InvoiceSubmission record with an ImporteTotal. InvoiceCancellation records are not supported.');
+        }
+
         $baseUrl = self::getConfig(self::QR_VERIFICATION_URL);
 
-        // Resolve the mandatory AEAT `importe` parameter only for invoice submissions.
-        // Cancellations and other non-verifiable records carry no ImporteTotal.
-        $totalAmount = ($record instanceof InvoiceSubmission) ? $record->totalAmount : null;
-
-        // Determine QR mode — default to verifactu for backward compatibility.
-        $qrMode = self::$config[self::QR_MODE] ?? self::QR_MODE_VERIFACTU;
-        $noVerifactu = ($qrMode === self::QR_MODE_NO_VERIFACTU);
-
-        return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $totalAmount, $margin, $noVerifactu);
+        return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $record->totalAmount, $margin);
     }
 
     protected static function assertSoapAvailable(): void

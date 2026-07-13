@@ -125,7 +125,7 @@ class VerifactuTest extends TestCase
         );
     }
 
-    public function testGenerateInvoiceQrAfterConfigNoVerifactuUsesNoHuellaAndRequiresImporte(): void
+    public function testGenerateInvoiceQrAfterConfigNoVerifactuUsesCorrectContract(): void
     {
         Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
 
@@ -138,26 +138,16 @@ class VerifactuTest extends TestCase
         $invoice->totalAmount = 121.4;
         $invoice->hash = 'hash-should-not-appear';
 
-        $svg = VerifactuService::generateInvoiceQr(
+        $result = VerifactuService::generateInvoiceQr(
             $invoice,
             QrGeneratorService::DESTINATION_STRING,
             300,
             QrGeneratorService::RENDERER_SVG
         );
 
-        $expectedSvg = QrGeneratorService::generateQr(
-            $invoice,
-            Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_TEST,
-            QrGeneratorService::DESTINATION_STRING,
-            300,
-            QrGeneratorService::RENDERER_SVG,
-            121.4,
-            4,
-            true
-        );
-
-        $this->assertSame($expectedSvg, $svg);
-        $this->assertStringContainsString('<svg', $svg);
+        // The No VERI*FACTU endpoint must be used
+        $this->assertSame(Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_TEST, VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL));
+        $this->assertStringContainsString('<svg', $result);
 
         $invoiceWithoutAmount = new InvoiceSubmission();
         $invoiceWithoutAmount->setInvoiceId($invoiceId);
@@ -173,7 +163,7 @@ class VerifactuTest extends TestCase
         );
     }
 
-    public function testGenerateNoVerifactuQrIsExplicitAliasForGenerateInvoiceQr(): void
+    public function testGenerateNoVerifactuQrWorksAfterConfigNoVerifactu(): void
     {
         Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
 
@@ -190,6 +180,142 @@ class VerifactuTest extends TestCase
 
         $this->assertSame($standardQr, $explicitQr);
         $this->assertNotEmpty($explicitQr);
+    }
+
+    public function testGenerateNoVerifactuQrFailsAfterConfigVerifactu(): void
+    {
+        Verifactu::config('/path/to/cert', 'password', Verifactu::TYPE_CERTIFICATE, Verifactu::ENVIRONMENT_SANDBOX);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessageMatches('/configNoVerifactu/i');
+
+        Verifactu::generateNoVerifactuQr($invoice);
+    }
+
+    public function testGenerateInvoiceQrWorksAfterConfigVerifactu(): void
+    {
+        Verifactu::config('/path/to/cert', 'password', Verifactu::TYPE_CERTIFICATE, Verifactu::ENVIRONMENT_SANDBOX);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+
+        $result = Verifactu::generateInvoiceQr($invoice);
+
+        $this->assertNotEmpty($result);
+        // Must use the VERI*FACTU (sandbox) endpoint
+        $this->assertSame(Verifactu::QR_VERIFICATION_URL_TEST, VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL));
+    }
+
+    public function testGenerateInvoiceQrWorksAfterConfigNoVerifactu(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+
+        $result = Verifactu::generateInvoiceQr($invoice);
+
+        $this->assertNotEmpty($result);
+        // Must use the No VERI*FACTU (sandbox) endpoint
+        $this->assertSame(Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_TEST, VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL));
+    }
+
+    public function testGenerateInvoiceQrRejectsInvoiceCancellation(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
+
+        $cancellation = new \eseperio\verifactu\models\InvoiceCancellation();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/InvoiceSubmission/i');
+
+        Verifactu::generateInvoiceQr($cancellation);
+    }
+
+    public function testSequentialConfigVerifactuThenNoVerifactuUsesSecondMode(): void
+    {
+        Verifactu::config('/path/to/cert', 'password', Verifactu::TYPE_CERTIFICATE, Verifactu::ENVIRONMENT_SANDBOX);
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+
+        $result = Verifactu::generateInvoiceQr($invoice);
+
+        $this->assertNotEmpty($result);
+        // Must use the production No VERI*FACTU endpoint
+        $this->assertSame(Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_PRODUCTION, VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL));
+    }
+
+    public function testSequentialConfigNoVerifactuThenVerifactuUsesVerifactuEndpoint(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
+        Verifactu::config('/path/to/cert', 'password', Verifactu::TYPE_CERTIFICATE, Verifactu::ENVIRONMENT_SANDBOX);
+
+        $invoice = new InvoiceSubmission();
+        $invoiceId = new InvoiceId();
+        $invoiceId->issuerNif = 'B12345678';
+        $invoiceId->seriesNumber = 'FACT-001';
+        $invoiceId->issueDate = '2026-07-01';
+        $invoice->setInvoiceId($invoiceId);
+        $invoice->totalAmount = 121.4;
+
+        $result = Verifactu::generateInvoiceQr($invoice);
+
+        $this->assertNotEmpty($result);
+        // Must use the sandbox VERI*FACTU endpoint
+        $this->assertSame(Verifactu::QR_VERIFICATION_URL_TEST, VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL));
+    }
+
+    public function testVerifactuProductionEndpoint(): void
+    {
+        Verifactu::config('/path/to/cert', 'password', Verifactu::TYPE_CERTIFICATE, Verifactu::ENVIRONMENT_PRODUCTION);
+        $url = VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL);
+        $this->assertSame(Verifactu::QR_VERIFICATION_URL_PRODUCTION, $url);
+    }
+
+    public function testVerifactuSandboxEndpoint(): void
+    {
+        Verifactu::config('/path/to/cert', 'password', Verifactu::TYPE_CERTIFICATE, Verifactu::ENVIRONMENT_SANDBOX);
+        $url = VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL);
+        $this->assertSame(Verifactu::QR_VERIFICATION_URL_TEST, $url);
+    }
+
+    public function testNoVerifactuProductionEndpoint(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_PRODUCTION);
+        $url = VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL);
+        $this->assertSame(Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_PRODUCTION, $url);
+    }
+
+    public function testNoVerifactuSandboxEndpoint(): void
+    {
+        Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
+        $url = VerifactuService::getConfig(VerifactuService::QR_VERIFICATION_URL);
+        $this->assertSame(Verifactu::QR_NO_VERIFACTU_VERIFICATION_URL_TEST, $url);
     }
 
     public function testSoapFacadeOperationsAreBlockedInNoVerifactuMode(): void

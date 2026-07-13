@@ -45,7 +45,8 @@ use eseperio\verifactu\models\InvoiceRecord;
  *     'https://sede.agenciatributaria.gob.es/verifactu',
  *     QrGeneratorService::DESTINATION_STRING,
  *     400,
- *     QrGeneratorService::RENDERER_SVG
+ *     QrGeneratorService::RENDERER_SVG,
+ *     121.40
  * );
  *
  * // Generate QR code as PNG file
@@ -54,7 +55,8 @@ use eseperio\verifactu\models\InvoiceRecord;
  *     'https://sede.agenciatributaria.gob.es/verifactu',
  *     QrGeneratorService::DESTINATION_FILE,
  *     300,
- *     QrGeneratorService::RENDERER_GD
+ *     QrGeneratorService::RENDERER_GD,
+ *     121.40
  * );
  * ```
  */
@@ -79,17 +81,16 @@ class QrGeneratorService
      *
      * All generated QR codes use error correction level M per AEAT Art.21.
      *
-     * @param InvoiceRecord $record              Invoice record to encode
-     * @param string        $baseVerificationUrl Base URL for AEAT invoice verification
-     * @param string        $dest                Destination type (file or string)
-     * @param int           $size                Resolution of the QR code in pixels
-     * @param string        $engine              Renderer to use (gd, imagick, svg)
-     * @param string|int|float|null $totalAmount         Total invoice amount; required for No VERI*FACTU, optional for VERI*FACTU
-     * @param int           $margin              Renderer margin (module units around QR matrix)
-     * @param bool          $noVerifactu         When true, uses No VERI*FACTU URL contract (no huella, mandatory importe)
+     * @param InvoiceRecord     $record              Invoice record to encode
+     * @param string            $baseVerificationUrl Base URL for AEAT invoice verification
+     * @param string            $dest                Destination type (file or string)
+     * @param int               $size                Resolution of the QR code in pixels
+     * @param string            $engine              Renderer to use (gd, imagick, svg)
+     * @param string|int|float  $totalAmount         Total invoice amount (ImporteTotal)
+     * @param int               $margin              Renderer margin (module units around QR matrix)
      * @return string QR image data or file path
      * @throws \RuntimeException
-     * @throws \InvalidArgumentException if No VERI*FACTU mode is active and totalAmount is null
+     * @throws \InvalidArgumentException if totalAmount is null
      */
     public static function generateQr(
         InvoiceRecord $record,
@@ -99,12 +100,10 @@ class QrGeneratorService
         $engine = self::RENDERER_GD,
         $totalAmount = null,
         int $margin = 4,
-        bool $noVerifactu = false,
     ) {
-        $qrContent = self::buildQrContent($record, $baseVerificationUrl, $totalAmount, $noVerifactu);
+        $qrContent = self::buildQrContent($record, $baseVerificationUrl, $totalAmount);
         $writer = self::createWriter($engine, $size, $margin);
-        // AEAT Art.21 mandates error correction level M for all generated QR codes.
-        $qrData = $writer->writeString($qrContent, 'ISO-8859-1', ErrorCorrectionLevel::M());
+        $qrData = $writer->writeString($qrContent, 'UTF-8', ErrorCorrectionLevel::M());
 
         if ($dest === self::DESTINATION_FILE) {
             $filePath = sys_get_temp_dir() . '/qr_' . uniqid() . self::getFileExtension($engine);
@@ -119,37 +118,28 @@ class QrGeneratorService
     /**
      * Builds the QR content string according to the AEAT QR specification.
      *
-     * VERI*FACTU parameter contract:
-     * - `nif`      — issuer NIF (mandatory)
-     * - `numserie` — invoice series + number (mandatory; replaces legacy `num`)
+     * Unified parameter contract for both VERI*FACTU and No VERI*FACTU:
+     * - `nif`      — issuer NIF (mandatory; exactly 9 printable ASCII characters)
+     * - `numserie` — invoice series + number (mandatory; 1-60 printable ASCII characters)
      * - `fecha`    — issue date in DD-MM-YYYY format (mandatory; QR-only conversion)
-     * - `importe`  — total invoice amount (optional; omitted when null)
-     * - `huella`   — SHA-256 hash/fingerprint (optional; included only when hash is set)
+     * - `importe`  — total invoice amount (mandatory; up to 12 integer digits, 2 decimal places)
      *
-     * No VERI*FACTU parameter contract:
-     * - `nif`      — issuer NIF (mandatory)
-     * - `numserie` — invoice series + number (mandatory)
-     * - `fecha`    — issue date in DD-MM-YYYY format (mandatory)
-     * - `importe`  — total invoice amount (mandatory; throws when null)
-     * - `huella`   — MUST NOT be emitted
+     * `huella` MUST NOT appear in the QR URL per the AEAT specification.
+     * `formato=json` MUST NOT appear in the QR URL per the AEAT specification.
      *
-     * `formato=json` MUST NOT appear in the QR URL per AEAT specification.
-     *
-     * @param string                $baseVerificationUrl Base URL for AEAT invoice verification
-     * @param string|int|float|null $totalAmount         Total invoice amount (ImporteTotal)
-     * @param bool                  $noVerifactu         When true, applies No VERI*FACTU contract
-     * @throws \InvalidArgumentException if No VERI*FACTU mode is active and totalAmount is null
+     * @param InvoiceRecord     $record              Invoice record to encode
+     * @param string            $baseVerificationUrl Base URL for AEAT invoice verification
+     * @param string|int|float  $totalAmount         Total invoice amount (ImporteTotal)
+     * @throws \InvalidArgumentException if totalAmount is null or validation fails
      */
     protected static function buildQrContent(
         InvoiceRecord $record,
         $baseVerificationUrl,
-        $totalAmount = null,
-        bool $noVerifactu = false,
+        $totalAmount,
     ): string {
         $invoiceId = $record->getInvoiceId();
-        $nif    = self::requireNonEmptyString($invoiceId?->issuerNif ?? null, 'nif');
-        $series = self::requireNonEmptyString($invoiceId?->seriesNumber ?? null, 'numserie');
-        $hash   = $record->hash;
+        $nif    = self::requireValidNif($invoiceId?->issuerNif ?? null, 'nif');
+        $series = self::requireValidNumserie($invoiceId?->seriesNumber ?? null, 'numserie');
 
         $date = self::reformatDateForQr($invoiceId?->getIssueDate() ?? null);
 
@@ -159,16 +149,7 @@ class QrGeneratorService
             'fecha'    => $date,
         ];
 
-        if ($totalAmount !== null) {
-            $params['importe'] = self::formatQrAmount($totalAmount);
-        } elseif ($noVerifactu) {
-            throw new \InvalidArgumentException('importe is mandatory for No VERI*FACTU QR generation.');
-        }
-
-        // huella is suppressed in No VERI*FACTU mode; included in VERI*FACTU when available.
-        if (!$noVerifactu && !empty($hash)) {
-            $params['huella'] = $hash;
-        }
+        $params['importe'] = self::formatQrAmount($totalAmount);
 
         return rtrim($baseVerificationUrl, '?') . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
     }
@@ -206,10 +187,38 @@ class QrGeneratorService
     /**
      * @param mixed $value
      */
-    private static function requireNonEmptyString($value, string $field): string
+    private static function requireValidNif($value, string $field): string
+    {
+        if (!is_string($value) || $value === '') {
+            throw new \InvalidArgumentException(sprintf('%s is required and must be a non-empty string.', $field));
+        }
+
+        if (strlen($value) !== 9) {
+            throw new \InvalidArgumentException(sprintf('%s must be exactly 9 characters.', $field));
+        }
+
+        if (!preg_match('/^[\x20-\x7E]{9}$/', $value)) {
+            throw new \InvalidArgumentException(sprintf('%s must contain only printable ASCII characters.', $field));
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private static function requireValidNumserie($value, string $field): string
     {
         if (!is_string($value) || trim($value) === '') {
             throw new \InvalidArgumentException(sprintf('%s is required and must be a non-empty string.', $field));
+        }
+
+        if (mb_strlen($value) > 60) {
+            throw new \InvalidArgumentException(sprintf('%s must not exceed 60 characters.', $field));
+        }
+
+        if (!preg_match('/^[\x20-\x7E]+$/', $value)) {
+            throw new \InvalidArgumentException(sprintf('%s must contain only printable ASCII characters.', $field));
         }
 
         return $value;
@@ -241,7 +250,7 @@ class QrGeneratorService
                 throw new \InvalidArgumentException('importe must use "." as decimal separator.');
             }
 
-            if (!preg_match('/^(?:0|[1-9]\d*)(?:\.\d+)?$/', $amount)) {
+            if (!preg_match('/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/', $amount)) {
                 throw new \InvalidArgumentException('importe must be numeric.');
             }
 
@@ -249,9 +258,13 @@ class QrGeneratorService
         } elseif (is_int($amount)) {
             $normalizedAmount = (string) $amount;
         } elseif (is_float($amount)) {
+            if (!is_finite($amount)) {
+                throw new \InvalidArgumentException('importe must be a finite number.');
+            }
+
             $roundedAmount = round($amount, 2);
 
-            if (abs($amount - $roundedAmount) > 0.0000001) {
+            if (abs($roundedAmount - $amount) > 0.0000001) {
                 throw new \InvalidArgumentException('importe must not contain more than 2 decimal places.');
             }
 
@@ -261,11 +274,21 @@ class QrGeneratorService
             throw new \InvalidArgumentException('importe must be numeric.');
         }
 
-        if (str_starts_with($normalizedAmount, '-')) {
-            throw new \InvalidArgumentException('importe must not be negative.');
+        if (in_array($normalizedAmount, ['-0', '-0.0', '-0.00', '-0.000'], true)) {
+            return '0';
         }
 
-        if (!preg_match('/^(?:0|[1-9]\d*)(?:\.(\d+))?$/', $normalizedAmount, $matches)) {
+        $numericPart = $normalizedAmount;
+        if (str_starts_with($normalizedAmount, '-')) {
+            $numericPart = substr($normalizedAmount, 1);
+        }
+
+        $intPart = explode('.', $numericPart)[0];
+        if (strlen($intPart) > 12) {
+            throw new \InvalidArgumentException('importe must not have more than 12 integer digits.');
+        }
+
+        if (!preg_match('/^-?(?:0|[1-9]\d*)(?:\.(\d+))?$/', $normalizedAmount, $matches)) {
             throw new \InvalidArgumentException('importe must be numeric.');
         }
 

@@ -159,16 +159,20 @@ class Verifactu
      * Generates a No VERI*FACTU QR code for the provided invoice.
      *
      * Requires the service to be configured via `configNoVerifactu()` first.
-     * This is an explicit alias for `generateInvoiceQr()` that makes the
-     * No VERI*FACTU mode clear at the call site.
-     *
      * The invoice record must have `issuerNif`, `seriesNumber`, `issueDate`,
      * and `totalAmount` set. `huella` is never included in the QR URL.
      *
+     * @throws \LogicException when the service is not configured in No VERI*FACTU mode
      * @return string QR image data (binary PNG by default)
      */
     public static function generateNoVerifactuQr(InvoiceRecord $record): string
     {
+        $qrMode = VerifactuService::getConfig(VerifactuService::QR_MODE, VerifactuService::QR_MODE_VERIFACTU);
+
+        if ($qrMode !== VerifactuService::QR_MODE_NO_VERIFACTU) {
+            throw new \LogicException('generateNoVerifactuQr() requires No VERI*FACTU configuration. Call configNoVerifactu() first.');
+        }
+
         return self::generateInvoiceQr($record);
     }
 }
