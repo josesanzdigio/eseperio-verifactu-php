@@ -44,44 +44,35 @@ class InvoiceSerializer
      */
     public static function toInvoiceXml(InvoiceSubmission $invoice, bool $validate = false): \DOMDocument
     {
-        // Create the XML document
         $doc = new \DOMDocument('1.0', 'UTF-8');
         $doc->formatOutput = true;
 
-        // Create root element with namespace
         $root = $doc->createElementNS(self::SF_NAMESPACE, 'sf:RegistroAlta');
         $doc->appendChild($root);
 
-        // IDVersion (required, hardcoded as '1.0')
-        $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDVersion', '1.0'));
+        $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDVersion', '1.0'));
 
-        // IDFactura (required)
         $invoiceId = $invoice->getInvoiceId();
         if ($invoiceId) {
             $idFactura = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDFactura');
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $invoiceId->issuerNif));
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $invoiceId->seriesNumber));
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $invoiceId->getIssueDate())));
+            $idFactura->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $invoiceId->issuerNif));
+            $idFactura->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $invoiceId->seriesNumber));
+            $idFactura->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $invoiceId->getIssueDate())));
             $root->appendChild($idFactura);
         }
 
-        // RefExterna (optional)
         if (!empty($invoice->externalRef)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:RefExterna', (string) $invoice->externalRef));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:RefExterna', (string) $invoice->externalRef));
         }
 
-        // NombreRazonEmisor (required)
-        $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazonEmisor', (string) $invoice->issuerName));
+        $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazonEmisor', (string) $invoice->issuerName));
 
-
-
-        // TipoFactura (required)
         if ($invoice->invoiceType) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoFactura', (string) $invoice->invoiceType->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoFactura', (string) $invoice->invoiceType->value));
         }
 
         if ($invoice->rectificationType) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoRectificativa', (string) $invoice->rectificationType->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoRectificativa', (string) $invoice->rectificationType->value));
         }
 
         $rectData = $invoice->getRectificationData();
@@ -89,106 +80,99 @@ class InvoiceSerializer
             $facturasRectificadas = $doc->createElementNS(self::SF_NAMESPACE, 'sf:FacturasRectificadas');
             foreach ($rectData['rectified'] as $rect) {
                 $idFacturaRectificada = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDFacturaRectificada');
-                $idFacturaRectificada->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $rect['issuerNif']));
-                $idFacturaRectificada->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $rect['seriesNumber']));
-                $idFacturaRectificada->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $rect['issueDate'])));
+                $idFacturaRectificada->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $rect['issuerNif']));
+                $idFacturaRectificada->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $rect['seriesNumber']));
+                $idFacturaRectificada->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $rect['issueDate'])));
                 $facturasRectificadas->appendChild($idFacturaRectificada);
             }
             $root->appendChild($facturasRectificadas);
         }
 
-        // FacturasSustituidas (optional)
         if (!empty($rectData['substituted'])) {
             $facturasSustituidas = $doc->createElementNS(self::SF_NAMESPACE, 'sf:FacturasSustituidas');
             foreach ($rectData['substituted'] as $subst) {
                 $idFacturaSustituida = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDFacturaSustituida');
-                $idFacturaSustituida->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $subst['issuerNif']));
-                $idFacturaSustituida->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $subst['seriesNumber']));
-                $idFacturaSustituida->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $subst['issueDate'])));
+                $idFacturaSustituida->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $subst['issuerNif']));
+                $idFacturaSustituida->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $subst['seriesNumber']));
+                $idFacturaSustituida->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $subst['issueDate'])));
                 $facturasSustituidas->appendChild($idFacturaSustituida);
             }
             $root->appendChild($facturasSustituidas);
         }
 
-        // ImporteRectificacion (optional)
         $rectBreakdown = $invoice->getRectificationBreakdown();
         if ($rectBreakdown) {
             $importeRectificacion = $doc->createElementNS(self::SF_NAMESPACE, 'sf:ImporteRectificacion');
-            $importeRectificacion->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:BaseRectificada', (string) number_format((float) $rectBreakdown->rectifiedBase, 2, '.', '')));
-            $importeRectificacion->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CuotaRectificada', (string) number_format((float) $rectBreakdown->rectifiedTax, 2, '.', '')));
+            $importeRectificacion->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:BaseRectificada', (string) number_format((float) $rectBreakdown->rectifiedBase, 2, '.', '')));
+            $importeRectificacion->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CuotaRectificada', (string) number_format((float) $rectBreakdown->rectifiedTax, 2, '.', '')));
             if (!is_null($rectBreakdown->rectifiedEquivalenceSurcharge)) {
-                $importeRectificacion->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CuotaRecargoRectificado', (string) number_format((float) $rectBreakdown->rectifiedEquivalenceSurcharge, 2, '.', '')));
+                $importeRectificacion->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CuotaRecargoRectificado', (string) number_format((float) $rectBreakdown->rectifiedEquivalenceSurcharge, 2, '.', '')));
             }
             $root->appendChild($importeRectificacion);
         }
 
         if (!empty($invoice->getOperationDate())) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaOperacion', self::formatDate((string) $invoice->getOperationDate())));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaOperacion', self::formatDate((string) $invoice->getOperationDate())));
         }
 
-        $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:DescripcionOperacion', (string) $invoice->operationDescription));
+        $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:DescripcionOperacion', (string) $invoice->operationDescription));
 
         if ($invoice->simplifiedInvoice) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FacturaSimplificadaArt7273', (string) $invoice->simplifiedInvoice->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FacturaSimplificadaArt7273', (string) $invoice->simplifiedInvoice->value));
         }
 
-        // FacturaSinIdentifDestinatarioArt61d (optional)
         if ($invoice->invoiceWithoutRecipient) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FacturaSinIdentifDestinatarioArt61d', (string) $invoice->invoiceWithoutRecipient->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FacturaSinIdentifDestinatarioArt61d', (string) $invoice->invoiceWithoutRecipient->value));
         }
 
-        // Macrodato (optional)
         if ($invoice->macrodata) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Macrodato', (string) $invoice->macrodata->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Macrodato', (string) $invoice->macrodata->value));
         }
 
-        // EmitidaPorTerceroODestinatario (optional)
         if ($invoice->issuedBy) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:EmitidaPorTerceroODestinatario', (string) $invoice->issuedBy->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:EmitidaPorTerceroODestinatario', (string) $invoice->issuedBy->value));
         }
 
-        // Tercero (optional)
         $thirdParty = $invoice->getThirdParty();
         if ($thirdParty) {
             $tercero = $doc->createElementNS(self::SF_NAMESPACE, 'sf:Tercero');
-            $tercero->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $thirdParty->name));
+            $tercero->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $thirdParty->name));
             if (!empty($thirdParty->nif)) {
-                $tercero->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $thirdParty->nif));
+                $tercero->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $thirdParty->nif));
             } elseif ($otherId = $thirdParty->getOtherId()) {
                 $idOtro = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDOtro');
                 if (!empty($otherId->countryCode)) {
-                    $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
+                    $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
                 }
                 if (!empty($otherId->idType)) {
-                    $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
+                    $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
                 }
                 if (!empty($otherId->id)) {
-                    $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
+                    $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
                 }
                 $tercero->appendChild($idOtro);
             }
             $root->appendChild($tercero);
         }
 
-        // Destinatarios (required if certain conditions are met)
         $recipients = $invoice->getRecipients();
         if (!empty($recipients)) {
             $destinatarios = $doc->createElementNS(self::SF_NAMESPACE, 'sf:Destinatarios');
             foreach ($recipients as $recipient) {
                 $idDestinatario = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDDestinatario');
-                $idDestinatario->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $recipient->name));
+                $idDestinatario->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $recipient->name));
                 if (!empty($recipient->nif)) {
-                    $idDestinatario->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $recipient->nif));
+                    $idDestinatario->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $recipient->nif));
                 } elseif ($otherId = $recipient->getOtherId()) {
                     $idOtro = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDOtro');
                     if (!empty($otherId->countryCode)) {
-                        $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
+                        $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
                     }
                     if (!empty($otherId->idType)) {
-                        $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
+                        $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
                     }
                     if (!empty($otherId->id)) {
-                        $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
+                        $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
                     }
                     $idDestinatario->appendChild($idOtro);
                 }
@@ -197,9 +181,8 @@ class InvoiceSerializer
             $root->appendChild($destinatarios);
         }
 
-        // Cupon (optional)
         if ($invoice->coupon) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Cupon', (string) $invoice->coupon->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Cupon', (string) $invoice->coupon->value));
         }
 
         // Desglose (required)
@@ -208,49 +191,40 @@ class InvoiceSerializer
             $desglose = $doc->createElementNS(self::SF_NAMESPACE, 'sf:Desglose');
             foreach ($breakdown->getDetails() as $detail) {
                 $detalleDesglose = $doc->createElementNS(self::SF_NAMESPACE, 'sf:DetalleDesglose');
-                // Impuesto (optional)
                 if ($detail->taxType) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Impuesto', (string) $detail->taxType->value));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Impuesto', (string) $detail->taxType->value));
                 }
 
-                // ClaveRegimen (optional)
                 if ($detail->regimeKey) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ClaveRegimen', (string) $detail->regimeKey->value));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ClaveRegimen', (string) $detail->regimeKey->value));
                 }
 
-                // Either CalificacionOperacion or OperacionExenta (one is required)
                 if ($detail->operationQualification) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CalificacionOperacion', (string) $detail->operationQualification->value));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CalificacionOperacion', (string) $detail->operationQualification->value));
                 } elseif ($detail->exemptOperation) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:OperacionExenta', (string) $detail->exemptOperation->value));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:OperacionExenta', (string) $detail->exemptOperation->value));
                 }
 
-                // TipoImpositivo (optional)
                 if (!is_null($detail->taxRate)) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoImpositivo', (string) number_format((float) $detail->taxRate, 2, '.', '')));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoImpositivo', (string) number_format((float) $detail->taxRate, 2, '.', '')));
                 }
 
-                // BaseImponibleOimporteNoSujeto (required)
-                $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:BaseImponibleOimporteNoSujeto', (string) number_format((float) $detail->taxableBase, 2, '.', '')));
+                $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:BaseImponibleOimporteNoSujeto', (string) number_format((float) $detail->taxableBase, 2, '.', '')));
 
-                // BaseImponibleACoste (optional)
                 if (!is_null($detail->costBasedTaxableBase)) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:BaseImponibleACoste', (string) number_format((float) $detail->costBasedTaxableBase, 2, '.', '')));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:BaseImponibleACoste', (string) number_format((float) $detail->costBasedTaxableBase, 2, '.', '')));
                 }
 
-                // CuotaRepercutida (optional)
                 if (!is_null($detail->taxAmount)) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CuotaRepercutida', (string) number_format((float) $detail->taxAmount, 2, '.', '')));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CuotaRepercutida', (string) number_format((float) $detail->taxAmount, 2, '.', '')));
                 }
 
-                // TipoRecargoEquivalencia (optional)
                 if (!is_null($detail->equivalenceSurchargeRate)) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoRecargoEquivalencia', (string) number_format((float) $detail->equivalenceSurchargeRate, 2, '.', '')));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoRecargoEquivalencia', (string) number_format((float) $detail->equivalenceSurchargeRate, 2, '.', '')));
                 }
 
-                // CuotaRecargoEquivalencia (optional)
                 if (!is_null($detail->equivalenceSurchargeAmount)) {
-                    $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CuotaRecargoEquivalencia', (string) number_format((float) $detail->equivalenceSurchargeAmount, 2, '.', '')));
+                    $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CuotaRecargoEquivalencia', (string) number_format((float) $detail->equivalenceSurchargeAmount, 2, '.', '')));
                 }
 
                 $desglose->appendChild($detalleDesglose);
@@ -260,72 +234,63 @@ class InvoiceSerializer
             $desglose = $doc->createElementNS(self::SF_NAMESPACE, 'sf:Desglose');
             $detalleDesglose = $doc->createElementNS(self::SF_NAMESPACE, 'sf:DetalleDesglose');
             // Schema requires CalificacionOperacion or OperacionExenta before BaseImponible
-            $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CalificacionOperacion', 'S1'));
+            $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CalificacionOperacion', 'S1'));
             $base = (float) $invoice->totalAmount - (float) $invoice->taxAmount;
-            $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:BaseImponibleOimporteNoSujeto', (string) number_format($base, 2, '.', '')));
+            $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:BaseImponibleOimporteNoSujeto', (string) number_format($base, 2, '.', '')));
             if (!is_null($invoice->taxAmount)) {
-                $detalleDesglose->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CuotaRepercutida', (string) number_format((float) $invoice->taxAmount, 2, '.', '')));
+                $detalleDesglose->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CuotaRepercutida', (string) number_format((float) $invoice->taxAmount, 2, '.', '')));
             }
             $desglose->appendChild($detalleDesglose);
             $root->appendChild($desglose);
         }
 
-        // CuotaTotal (required)
-        $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CuotaTotal', (string) number_format((float) $invoice->taxAmount, 2, '.', '')));
+        $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CuotaTotal', (string) number_format((float) $invoice->taxAmount, 2, '.', '')));
 
-        // ImporteTotal (required)
-        $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ImporteTotal', (string) number_format((float) $invoice->totalAmount, 2, '.', '')));
+        $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ImporteTotal', (string) number_format((float) $invoice->totalAmount, 2, '.', '')));
 
-        // Encadenamiento (required)
         $encadenamiento = $doc->createElementNS(self::SF_NAMESPACE, 'sf:Encadenamiento');
 
         $chaining = $invoice->getChaining();
         if ($chaining) {
-            // Check if it's the first record in a chain
             if ($chaining->firstRecord === 'S') {
-                // PrimerRegistro
-                $encadenamiento->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
+                $encadenamiento->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
             } else {
-                // RegistroAnterior - get previous invoice details
                 $previousInvoice = $chaining->getPreviousInvoice();
                 if ($previousInvoice) {
                     $registroAnterior = $doc->createElementNS(self::SF_NAMESPACE, 'sf:RegistroAnterior');
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $previousInvoice->issuerNif));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $previousInvoice->seriesNumber));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->getIssueDate())));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Huella', (string) $previousInvoice->hash));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $previousInvoice->issuerNif));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $previousInvoice->seriesNumber));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->getIssueDate())));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Huella', (string) $previousInvoice->hash));
                     $encadenamiento->appendChild($registroAnterior);
                 } else {
-                    // Fallback to PrimerRegistro if no previous invoice details available
-                    $encadenamiento->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
+                    $encadenamiento->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
                 }
             }
         } else {
-            // Default to PrimerRegistro if no chaining info provided
-            $encadenamiento->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
+            $encadenamiento->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
         }
 
         $root->appendChild($encadenamiento);
 
-        // SistemaInformatico (required)
         $computerSystem = $invoice->getSystemInfo();
         $invoiceIdForDefaults = $invoice->getInvoiceId();
         $root->appendChild(self::buildSistemaInformatico($doc, $computerSystem, $invoiceIdForDefaults?->issuerNif));
 
         if (!empty($invoice->recordTimestamp)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaHoraHusoGenRegistro', (string) $invoice->recordTimestamp));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaHoraHusoGenRegistro', (string) $invoice->recordTimestamp));
         }
         if (!empty($invoice->invoiceAgreementNumber)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumRegistroAcuerdoFacturacion', (string) $invoice->invoiceAgreementNumber));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumRegistroAcuerdoFacturacion', (string) $invoice->invoiceAgreementNumber));
         }
         if (!empty($invoice->systemAgreementId)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IdAcuerdoSistemaInformatico', (string) $invoice->systemAgreementId));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IdAcuerdoSistemaInformatico', (string) $invoice->systemAgreementId));
         }
         if ($invoice->hashType) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoHuella', (string) $invoice->hashType->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoHuella', (string) $invoice->hashType->value));
         }
         if (!empty($invoice->hash)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Huella', (string) $invoice->hash));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Huella', (string) $invoice->hash));
         }
 
         if ($validate) {
@@ -346,46 +311,46 @@ class InvoiceSerializer
         $root = $doc->createElementNS(self::SF_NAMESPACE, 'sf:RegistroAnulacion');
         $doc->appendChild($root);
 
-        $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDVersion', '1.0'));
+        $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDVersion', '1.0'));
 
         $invoiceId = $cancellation->getInvoiceId();
         if ($invoiceId) {
             $idFactura = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDFactura');
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFacturaAnulada', (string) $invoiceId->issuerNif));
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFacturaAnulada', (string) $invoiceId->seriesNumber));
-            $idFactura->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFacturaAnulada', self::formatDate((string) $invoiceId->getIssueDate())));
+            $idFactura->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDEmisorFacturaAnulada', (string) $invoiceId->issuerNif));
+            $idFactura->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumSerieFacturaAnulada', (string) $invoiceId->seriesNumber));
+            $idFactura->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFacturaAnulada', self::formatDate((string) $invoiceId->getIssueDate())));
             $root->appendChild($idFactura);
         }
 
         if (!empty($cancellation->externalReference)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:RefExterna', (string) $cancellation->externalReference));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:RefExterna', (string) $cancellation->externalReference));
         }
         if ($cancellation->noPreviousRecord) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:SinRegistroPrevio', (string) $cancellation->noPreviousRecord->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:SinRegistroPrevio', (string) $cancellation->noPreviousRecord->value));
         }
         if ($cancellation->previousRejection) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:RechazoPrevio', (string) $cancellation->previousRejection->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:RechazoPrevio', (string) $cancellation->previousRejection->value));
         }
         if ($cancellation->generator) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:GeneradoPor', (string) $cancellation->generator->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:GeneradoPor', (string) $cancellation->generator->value));
         }
 
         $generatorData = $cancellation->getGeneratorData();
         if ($generatorData) {
             $generador = $doc->createElementNS(self::SF_NAMESPACE, 'sf:Generador');
-            $generador->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $generatorData->name));
+            $generador->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $generatorData->name));
             if (!empty($generatorData->nif)) {
-                $generador->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $generatorData->nif));
+                $generador->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $generatorData->nif));
             } elseif ($otherId = $generatorData->getOtherId()) {
                 $idOtro = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDOtro');
                 if (!empty($otherId->countryCode)) {
-                    $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
+                    $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
                 }
                 if (!empty($otherId->idType)) {
-                    $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
+                    $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
                 }
                 if (!empty($otherId->id)) {
-                    $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
+                    $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
                 }
                 $generador->appendChild($idOtro);
             }
@@ -396,22 +361,22 @@ class InvoiceSerializer
         $chaining = $cancellation->getChaining();
         if ($chaining) {
             if ($chaining->firstRecord === 'S') {
-                $encadenamiento->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
+                $encadenamiento->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
             } else {
                 $previousInvoice = $chaining->getPreviousInvoice();
                 if ($previousInvoice) {
                     $registroAnterior = $doc->createElementNS(self::SF_NAMESPACE, 'sf:RegistroAnterior');
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $previousInvoice->issuerNif));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $previousInvoice->seriesNumber));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->getIssueDate())));
-                    $registroAnterior->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Huella', (string) $previousInvoice->hash));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDEmisorFactura', (string) $previousInvoice->issuerNif));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumSerieFactura', (string) $previousInvoice->seriesNumber));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $previousInvoice->getIssueDate())));
+                    $registroAnterior->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Huella', (string) $previousInvoice->hash));
                     $encadenamiento->appendChild($registroAnterior);
                 } else {
-                    $encadenamiento->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
+                    $encadenamiento->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
                 }
             }
         } else {
-            $encadenamiento->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
+            $encadenamiento->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:PrimerRegistro', 'S'));
         }
         $root->appendChild($encadenamiento);
 
@@ -420,13 +385,13 @@ class InvoiceSerializer
         $root->appendChild(self::buildSistemaInformatico($doc, $computerSystem, $invoiceIdForDefaults?->issuerNif));
 
         if (!empty($cancellation->recordTimestamp)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaHoraHusoGenRegistro', (string) $cancellation->recordTimestamp));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaHoraHusoGenRegistro', (string) $cancellation->recordTimestamp));
         }
         if ($cancellation->hashType) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoHuella', (string) $cancellation->hashType->value));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoHuella', (string) $cancellation->hashType->value));
         }
         if (!empty($cancellation->hash)) {
-            $root->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Huella', (string) $cancellation->hash));
+            $root->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Huella', (string) $cancellation->hash));
         }
 
         if ($validate) {
@@ -444,60 +409,50 @@ class InvoiceSerializer
         $doc = new \DOMDocument('1.0', 'UTF-8');
         $doc->formatOutput = true;
 
-        // Root element must be in ConsultaLR namespace, but tests expect the prefix 'sf'
         $root = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:ConsultaFactuSistemaFacturacion');
         $doc->appendChild($root);
 
-        // Cabecera (Consulta namespace) with required IDVersion (child in SF namespace)
         $cabecera = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:Cabecera');
-        $cabecera->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDVersion', '1.0'));
+        $cabecera->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDVersion', '1.0'));
         $root->appendChild($cabecera);
-        #Fix https://github.com/Eseperio/verifactu-php/issues/39
         $issuerparty = $query->getIssuerparty();
         $obligadoEmision = $doc->createElementNS(self::SF_NAMESPACE, 'sf:ObligadoEmision');
         $cabecera->appendChild($obligadoEmision);
-        // Orden según schema PersonaFisicaJuridicaESType: NombreRazon, NIF
-        $obligadoEmision->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $issuerparty['name']));
-        $obligadoEmision->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $issuerparty['nif']));
+        $obligadoEmision->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $issuerparty['name']));
+        $obligadoEmision->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $issuerparty['nif']));
 
-        // FiltroConsulta (Consulta namespace)
         $filtro = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:FiltroConsulta');
         $root->appendChild($filtro);
 
-        // PeriodoImputacion (Consulta ns) with children in SF ns, per schema
         $periodoImputacion = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:PeriodoImputacion');
-        $periodoImputacion->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Ejercicio', (string) $query->year));
-        $periodoImputacion->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Periodo', (string) $query->period));
+        $periodoImputacion->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Ejercicio', (string) $query->year));
+        $periodoImputacion->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Periodo', (string) $query->period));
         $filtro->appendChild($periodoImputacion);
 
-        // Optional simple fields in Consulta namespace
         if (!empty($query->seriesNumber)) {
-            $filtro->appendChild($doc->createElementNS(self::QUERY_NAMESPACE, 'sf:NumSerieFactura', (string) $query->seriesNumber));
+            $filtro->appendChild(self::createTextElement($doc, self::QUERY_NAMESPACE, 'sf:NumSerieFactura', (string) $query->seriesNumber));
         }
 
-        // Contraparte (Consulta ns) with children from SF ns
         $counterparty = $query->getCounterparty();
         if (!empty($counterparty) && is_array($counterparty)) {
             $contraparte = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:Contraparte');
-            // Order matters: NombreRazon first, then identification (NIF/IDOtro)
             if (!empty($counterparty['name'])) {
-                $contraparte->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $counterparty['name']));
+                $contraparte->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $counterparty['name']));
             }
             if (!empty($counterparty['nif'])) {
-                $contraparte->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $counterparty['nif']));
+                $contraparte->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $counterparty['nif']));
             }
             if (!empty($counterparty['otherId'])) {
-                // Build IDOtro block in SF ns if provided as associative array
                 if (is_array($counterparty['otherId'])) {
                     $idOtro = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDOtro');
                     if (!empty($counterparty['otherId']['countryCode'])) {
-                        $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CodigoPais', (string) $counterparty['otherId']['countryCode']));
+                        $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CodigoPais', (string) $counterparty['otherId']['countryCode']));
                     }
                     if (!empty($counterparty['otherId']['idType'])) {
-                        $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDType', (string) $counterparty['otherId']['idType']));
+                        $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDType', (string) $counterparty['otherId']['idType']));
                     }
                     if (!empty($counterparty['otherId']['id'])) {
-                        $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ID', (string) $counterparty['otherId']['id']));
+                        $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ID', (string) $counterparty['otherId']['id']));
                     }
                     $contraparte->appendChild($idOtro);
                 }
@@ -505,18 +460,15 @@ class InvoiceSerializer
             $filtro->appendChild($contraparte);
         }
 
-        // FechaExpedicionFactura (Consulta ns) wrapping SF choice type
         if (!empty($query->getIssueDate())) {
             $fechaWrapper = $doc->createElementNS(self::QUERY_NAMESPACE, 'sf:FechaExpedicionFactura');
-            $fechaWrapper->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $query->getIssueDate())));
+            $fechaWrapper->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:FechaExpedicionFactura', self::formatDate((string) $query->getIssueDate())));
             $filtro->appendChild($fechaWrapper);
         }
 
         if (!empty($query->externalRef)) {
-            $filtro->appendChild($doc->createElementNS(self::QUERY_NAMESPACE, 'sf:RefExterna', (string) $query->externalRef));
+            $filtro->appendChild(self::createTextElement($doc, self::QUERY_NAMESPACE, 'sf:RefExterna', (string) $query->externalRef));
         }
-
-        // Note: SistemaInformatico and ClavePaginacion are optional; omit unless full data is available
 
         if ($validate) {
             self::validateXml($doc, __DIR__ . '/../schemes/ConsultaLR.xsd');
@@ -533,6 +485,18 @@ class InvoiceSerializer
      * @param string $date Date string in YYYY-MM-DD or DD-MM-YYYY format
      * @return string Date string in DD-MM-YYYY format
      */
+    /**
+     * Creates a namespaced element with properly escaped text content.
+     * Unlike createElementNS(..., $value), this uses a dedicated DOMText node
+     * so that &amp;, &lt;, &gt;, quotes and apostrophes are correctly encoded.
+     */
+    private static function createTextElement(\DOMDocument $doc, string $namespace, string $qualifiedName, string $value): \DOMElement
+    {
+        $element = $doc->createElementNS($namespace, $qualifiedName);
+        $element->appendChild($doc->createTextNode($value));
+        return $element;
+    }
+
     public static function formatDate(string $date): string
     {
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -571,14 +535,12 @@ class InvoiceSerializer
 
         $obligadoEmision = $newDoc->createElementNS(self::SF_NAMESPACE, 'sf:ObligadoEmision');
         $cabecera->appendChild($obligadoEmision);
-        // Orden según schema PersonaFisicaJuridicaESType: NombreRazon, NIF
-        $obligadoEmision->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $name));
-        $obligadoEmision->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $nif));
+        $obligadoEmision->appendChild(self::createTextElement($newDoc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $name));
+        $obligadoEmision->appendChild(self::createTextElement($newDoc, self::SF_NAMESPACE, 'sf:NIF', (string) $nif));
 
-        // RemisionVoluntaria (optional) — supports FechaFinVeriFactu per AEAT validation 31.1.3
         if (!empty($fechaFinVeriFactu)) {
             $remisionVoluntaria = $newDoc->createElementNS(self::SF_NAMESPACE, 'sf:RemisionVoluntaria');
-            $remisionVoluntaria->appendChild($newDoc->createElementNS(self::SF_NAMESPACE, 'sf:FechaFinVeriFactu', (string) $fechaFinVeriFactu));
+            $remisionVoluntaria->appendChild(self::createTextElement($newDoc, self::SF_NAMESPACE, 'sf:FechaFinVeriFactu', (string) $fechaFinVeriFactu));
             $cabecera->appendChild($remisionVoluntaria);
         }
 
@@ -595,26 +557,26 @@ class InvoiceSerializer
     {
         $sistemaInformatico = $doc->createElementNS(self::SF_NAMESPACE, 'sf:SistemaInformatico');
         $providerName = $system?->providerName ?? 'Proveedor Sistema';
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreRazon', (string) $providerName));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreRazon', (string) $providerName));
 
         $providerId = $system?->getProviderId();
         if ($providerId && !empty($providerId->nif)) {
-            $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $providerId->nif));
+            $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $providerId->nif));
         } elseif ($providerId && ($otherId = $providerId->getOtherId())) {
             $idOtro = $doc->createElementNS(self::SF_NAMESPACE, 'sf:IDOtro');
             if (!empty($otherId->countryCode)) {
-                $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
+                $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:CodigoPais', (string) $otherId->countryCode));
             }
             if (!empty($otherId->idType)) {
-                $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
+                $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IDType', (string) $otherId->idType));
             }
             if (!empty($otherId->id)) {
-                $idOtro->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
+                $idOtro->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:ID', (string) $otherId->id));
             }
             $sistemaInformatico->appendChild($idOtro);
         } else {
             $fallbackNif = $issuerNifForDefault ?: '12345678Z';
-            $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NIF', (string) $fallbackNif));
+            $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NIF', (string) $fallbackNif));
         }
 
         $nombreSistema = $system?->systemName ?? 'Sistema';
@@ -625,13 +587,13 @@ class InvoiceSerializer
         $multiOT = $system?->multipleObligations?->value ?? 'N';
         $indicadorMulti = $system?->hasMultipleObligations?->value ?? 'N';
 
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NombreSistemaInformatico', (string) $nombreSistema));
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IdSistemaInformatico', (string) $idSistema));
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:Version', (string) $version));
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:NumeroInstalacion', (string) $numInstalacion));
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoUsoPosibleSoloVerifactu', (string) $soloVerifactu));
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:TipoUsoPosibleMultiOT', (string) $multiOT));
-        $sistemaInformatico->appendChild($doc->createElementNS(self::SF_NAMESPACE, 'sf:IndicadorMultiplesOT', (string) $indicadorMulti));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NombreSistemaInformatico', (string) $nombreSistema));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IdSistemaInformatico', (string) $idSistema));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:Version', (string) $version));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:NumeroInstalacion', (string) $numInstalacion));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoUsoPosibleSoloVerifactu', (string) $soloVerifactu));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:TipoUsoPosibleMultiOT', (string) $multiOT));
+        $sistemaInformatico->appendChild(self::createTextElement($doc, self::SF_NAMESPACE, 'sf:IndicadorMultiplesOT', (string) $indicadorMulti));
 
         return $sistemaInformatico;
     }
