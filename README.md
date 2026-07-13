@@ -904,12 +904,103 @@ See [LICENSE](LICENSE) file.
 
 ## Developing and testing
 
-### Testing
+### Testing with Docker (recommended)
+
+Docker is the recommended way to run tests. PHP and Composer are not required on the host.
+
+All commands below run from the `tools/php-tests` directory:
+
+```bash
+cd tools/php-tests
+```
+
+#### Build the test image
+
+The first build downloads the PHP 8.1.34 and Composer 2.8.12 images and installs
+Composer dependencies — Internet access is required.
+
+```bash
+make build
+```
+
+Subsequent executions reuse Docker layer caches and the named Composer volume;
+repeat builds are much faster.
+
+#### Run the complete unit suite
+
+Unit tests run entirely inside the container, never contact AEAT, and require no
+certificate or `.env` file. Dependency versions are resolved within the
+constraints declared in `composer.json` (this repository does not ship a
+`composer.lock`, since it is a library).
+
+```bash
+make test-unit
+```
+
+#### Run a single test file
+
+```bash
+make test-file FILE=tests/Unit/Services/QrRoundTripTest.php
+```
+
+#### Run sandbox integration tests
+
+Integration tests require a valid **sandbox** test certificate and a local `.env` file.
+They use the AEAT sandbox environment only — never production.
+
+1. Copy the example environment file:
+
+   ```bash
+   cp ../../.env.example ../../.env
+   ```
+
+2. Edit `../../.env` with your sandbox certificate path and password.
+   The certificate must be a sandbox/test certificate, **not** a production one.
+
+3. Run:
+
+   ```bash
+   make test-integration
+   ```
+
+> [!IMPORTANT]
+> - Unit tests never contact AEAT and never require a certificate.
+> - Integration tests are opt-in — they only run when explicitly invoked.
+> - The `.env` file is ignored by Git. Never commit it.
+> - After updating `composer.json`, rebuild the image with `make build`.
+
+#### Make targets
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build or rebuild the PHP test Docker image |
+| `make test-unit` | Run the complete unit suite (no `.env` needed) |
+| `make test-file FILE=<path>` | Run a single test file |
+| `make test-integration` | Run sandbox integration tests (requires `.env` and certificate) |
+| `make php-version` | Show PHP version inside the container |
+| `make clean` | Remove Docker volumes created by the test environment |
+
+> **Note:** Some tests that require a real certificate (SoapClient, XmlSigner) are skipped when
+> no certificate is available. This is expected and does not indicate a problem.
+
+### Alternative: Native testing
+
+If you have PHP and Composer installed natively:
+
+```bash
+# Run unit tests
+composer test-unit
+
+# Run sandbox integration tests (requires certificate and .env)
+composer test-sandbox
+```
+
+### Test suites
 
 This library includes comprehensive tests to ensure code quality and that documentation examples work correctly:
 
 ```bash
-# Run all tests
+# Run all tests (native)
 composer test
 
 # Test only README examples
@@ -924,38 +1015,23 @@ composer test-sandbox
 
 #### Setting up for Sandbox Testing
 
-To run tests that interact with the AEAT Verifactu sandbox environment, you need to provide a valid certificate. The
-library uses a `.env` file to securely load certificate information without committing it to the repository.
+To run tests that interact with the AEAT Verifactu sandbox environment (either natively or via Docker), you need to
+provide a valid certificate. The library uses a `.env` file to securely load certificate information without committing
+it to the repository.
 
 1. Copy the `.env.example` file to `.env` in the project root:
    ```bash
    cp .env.example .env
    ```
 
-2. Edit the `.env` file and set the following variables:
-   ```
-   # Path to your certificate file (required for sandbox tests)
-   VERIFACTU_CERT_PATH=/path/to/your/certificate.p12
+2. Edit the `.env` file with your sandbox certificate path and password. All values are
+   documented in `.env.example`.
 
-   # Password for your certificate (required for sandbox tests)
-   VERIFACTU_CERT_PASSWORD=your_certificate_password
+3. When you run any test command natively, the library will automatically check if the `.env` file exists and create it
+   from `.env.example` if it doesn't. If the file is created automatically, you'll see a warning message indicating that
+   you need to configure it.
 
-   # Certificate type: 'certificate' or 'seal'
-   VERIFACTU_CERT_TYPE=certificate
-
-   # Environment: 'production' or 'sandbox'
-   VERIFACTU_ENVIRONMENT=sandbox
-
-   # Required by integration tests (must match your AEAT census data)
-   TEST_ISSUER_NIF=B12345678
-   TEST_ISSUER_NAME=Example Company SL
-   ```
-
-3. When you run any test command, the library will automatically check if the `.env` file exists and create it from
-   `.env.example` if it doesn't. If the file is created automatically, you'll see a warning message indicating that you
-   need to configure it.
-
-4. Tests that require a certificate will be skipped if the `.env` file is not properly configured.
+4. Tests that require a certificate will be skipped if `.env` is not properly configured.
 
 > **Note:** The `.env` file is excluded from version control by `.gitignore` to prevent accidentally committing
 > sensitive information.

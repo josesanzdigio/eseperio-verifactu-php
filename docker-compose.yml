@@ -5,27 +5,45 @@ services:
     environment:
       COMPOSER_CACHE_DIR: /tmp/composer-cache
     volumes:
-      - ./:/app:delegated
+      - type: bind
+        source: ./
+        target: /app
+        read_only: false
+      - vendor_data:/app/vendor
+      - phpunit_cache:/app/.phpunit.cache
     command: >-
-      sh -lc "composer install --no-interaction --prefer-dist && composer test-unit"
+      sh -lc "composer install --no-interaction --prefer-dist && vendor/bin/phpunit --testsuite=Unit"
     tty: true
     stdin_open: true
 
   integration:
+    profiles:
+      - integration
     build: .
     working_dir: /app
-    # Carga variables del .env del proyecto (host)
     env_file:
       - .env
     environment:
-      # En el contenedor, usaremos esta ruta estándar
       VERIFACTU_CERT_PATH: /certs/cert.p12
       COMPOSER_CACHE_DIR: /tmp/composer-cache
     volumes:
-      - ./:/app:delegated
-      # Sustituye con ruta del host desde .env (Compose lee .env para la sustitución)
-      - ${VERIFACTU_CERT_PATH}:/certs/cert.p12:ro
+      - type: bind
+        source: ./
+        target: /app
+        read_only: false
+      - type: bind
+        source: ${VERIFACTU_CERT_PATH:?Set VERIFACTU_CERT_PATH in .env}
+        target: /certs/cert.p12
+        read_only: true
+        bind:
+          create_host_path: false
+      - vendor_data:/app/vendor
+      - phpunit_cache:/app/.phpunit.cache
     command: >-
-      sh -lc "composer install --no-interaction --prefer-dist && composer test-sandbox"
+      sh -lc "composer install --no-interaction --prefer-dist && vendor/bin/phpunit --testsuite=Integration"
     tty: true
     stdin_open: true
+
+volumes:
+  vendor_data:
+  phpunit_cache:

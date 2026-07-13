@@ -1,14 +1,54 @@
-# Docker context ignore
+# Version control
 .git
 .gitignore
+
+# Sensitive configuration
+.env
+.env.*
+!/.env.example
+
+# Certificates and private keys
+*.p12
+*.pfx
+*.pem
+*.key
+
+# IDE and editor files
 .idea
+.vscode
+*.swp
+*.swo
+
+# PHP tool caches
 .phpunit.cache
 .phpunit.result.cache
+.php-cs-fixer.cache
+.phpstan.cache
+.rector/
+
+# Composer artifacts (installed inside container)
+vendor
 vendor/.cache
-var/
-node_modules/
-.DS_Store
-*.log
-# Composer artifacts we can install in container (but keep vendor bind-mounted)
 composer.lock
+
+# Generated and output directories
+var/
+coverage/
+
+# OS metadata
+.DS_Store
+
+# Logs
+*.log
+
+# Local agent and tooling caches
+.atl/
+.codegraph/
+openspec/
+token-usage-output.txt
+docs/sdd/
+
+# Temporary files
+*.bak
+*~
 
