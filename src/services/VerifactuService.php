@@ -315,6 +315,31 @@ TXT
         return QrGeneratorService::generateQr($record, $baseUrl, $destination, $size, $engine, $record->totalAmount, $margin);
     }
 
+    /**
+     * Generates the complete canonical No VERI*FACTU verification URL.
+     *
+     * Requires configNoVerifactu() through the public facade before calling.
+     *
+     * @return string Complete absolute verification URL encoded in the QR
+     * @throws \LogicException when No VERI*FACTU mode is not configured
+     */
+    public static function generateNoVerifactuQrContent(InvoiceSubmission $invoiceSubmission): string
+    {
+        $qrMode = self::getConfig(self::QR_MODE, self::QR_MODE_VERIFACTU);
+
+        if ($qrMode !== self::QR_MODE_NO_VERIFACTU) {
+            throw new \LogicException('generateNoVerifactuQrContent() requires No VERI*FACTU configuration. Call configNoVerifactu() first.');
+        }
+
+        $baseUrl = self::getConfig(self::QR_VERIFICATION_URL);
+
+        return QrGeneratorService::generateQrContent(
+            $invoiceSubmission,
+            $baseUrl,
+            $invoiceSubmission->totalAmount,
+        );
+    }
+
     protected static function assertSoapAvailable(): void
     {
         $qrMode = self::$config[self::QR_MODE] ?? self::QR_MODE_VERIFACTU;

@@ -101,7 +101,7 @@ class QrGeneratorService
         $totalAmount = null,
         int $margin = 4,
     ) {
-        $qrContent = self::buildQrContent($record, $baseVerificationUrl, $totalAmount);
+        $qrContent = self::generateQrContent($record, $baseVerificationUrl, $totalAmount);
         $writer = self::createWriter($engine, $size, $margin);
         $qrData = $writer->writeString($qrContent, 'UTF-8', ErrorCorrectionLevel::M());
 
@@ -113,6 +113,23 @@ class QrGeneratorService
         }
 
         return $qrData;
+    }
+
+    /**
+     * Generates the canonical URL encoded in an invoice QR code.
+     *
+     * @param InvoiceRecord     $record              Invoice record to encode
+     * @param string            $baseVerificationUrl Base URL for AEAT invoice verification
+     * @param string|int|float  $totalAmount         Total invoice amount (ImporteTotal)
+     * @return string Complete absolute verification URL
+     * @throws \InvalidArgumentException if validation fails
+     */
+    public static function generateQrContent(
+        InvoiceRecord $record,
+        string $baseVerificationUrl,
+        $totalAmount,
+    ): string {
+        return self::buildQrContent($record, $baseVerificationUrl, $totalAmount);
     }
 
     /**

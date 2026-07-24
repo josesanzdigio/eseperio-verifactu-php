@@ -85,6 +85,8 @@ class QrRoundTripTest extends TestCase
             . '&fecha=15-06-2026'
             . '&importe=-242.4';
 
+        $this->assertSame($expectedUrl, Verifactu::generateNoVerifactuQrContent($invoice));
+
         $decodedText = $this->decodePngRoundTrip($png);
         $this->assertSame($expectedUrl, $decodedText);
 

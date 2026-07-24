@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Public `Verifactu::generateNoVerifactuQrContent()` API for retrieving the canonical absolute verification URL encoded in a No VERI*FACTU QR.
+
 ## [2.0.0] — 2026-07-13
 
 ### Added

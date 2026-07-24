@@ -175,4 +175,18 @@ class Verifactu
 
         return self::generateInvoiceQr($record);
     }
+
+    /**
+     * Generates the complete canonical No VERI*FACTU verification URL.
+     *
+     * The URL uses the endpoint selected by configNoVerifactu() and is the
+     * exact content encoded in the generated QR image.
+     *
+     * @return string Complete absolute verification URL
+     * @throws \LogicException when the service is not configured in No VERI*FACTU mode
+     */
+    public static function generateNoVerifactuQrContent(InvoiceSubmission $invoiceSubmission): string
+    {
+        return VerifactuService::generateNoVerifactuQrContent($invoiceSubmission);
+    }
 }

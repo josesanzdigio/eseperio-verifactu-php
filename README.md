@@ -159,6 +159,21 @@ Verifactu::configNoVerifactu(Verifactu::ENVIRONMENT_SANDBOX);
 After calling `configNoVerifactu()`, calls to `Verifactu::generateInvoiceQr()` will produce a No VERI\*FACTU QR
 pointing to the AEAT No VERI\*FACTU validation endpoint.
 
+To obtain the complete canonical URL encoded in the QR without generating an image:
+
+```php
+Verifactu::configNoVerifactu(
+    Verifactu::ENVIRONMENT_SANDBOX
+);
+
+$verificationUrl =
+    Verifactu::generateNoVerifactuQrContent($invoiceSubmission);
+```
+
+`generateNoVerifactuQrContent()` returns the complete absolute URL, not SVG or PNG data. The production or sandbox
+endpoint comes from `configNoVerifactu()`. Consumers may persist this exact value for immutable replay and should not
+prepend an endpoint manually.
+
 No VERI\*FACTU QR contract:
 
 * Required query keys: `nif`, `numserie`, `fecha`, `importe`
