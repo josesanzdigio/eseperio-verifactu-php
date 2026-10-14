@@ -61,10 +61,13 @@ class ChainingDeterminismTest extends TestCase
         $hash2 = HashGeneratorService::generate($r2);
         $hash3 = HashGeneratorService::generate($r3);
 
-        // Fixed regression values (computed independently)
-        self::assertSame('36FFA3622AE62AEB4311C4655B30D62CB526CD2B3B042BEF5B61D75F6F1F1871', $hash1, 'Record 1 hash mismatch');
-        self::assertSame('EA4490B1008B48DA9F402C13E05948FCA8DA434374CA0E7294497C930E44D2A3', $hash2, 'Record 2 hash mismatch');
-        self::assertSame('403ECBFC9A08E52A12B28CDD2B1CAB0ADB7EC6B0A9D6EE0F8E9A71734F523724', $hash3, 'Record 3 hash mismatch');
+        // Fixed regression values for the AEAT-conformant canonical string
+        // (FechaExpedicionFactura in fiscal d-m-Y, per AEAT hash spec v0.1.2 §3).
+        // Previous literals encoded the pre-fix Y-m-d canonical and were
+        // replaced when HashGeneratorService was aligned with AEAT.
+        self::assertSame('C463449414263E0541D528BF44EC66B12D583CDE38F7533FDA4F97F8E1323096', $hash1, 'Record 1 hash mismatch');
+        self::assertSame('EB4EF01AA6E009DFC36ED61F0FFD5B96966B943E1982D6797E732F23BBD7AC92', $hash2, 'Record 2 hash mismatch');
+        self::assertSame('224F7BB345D0D149ECADCBD76391F12A3F7E772EE23382C9231E9E0C15646688', $hash3, 'Record 3 hash mismatch');
     }
 
     /** @test */

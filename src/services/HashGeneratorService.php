@@ -41,10 +41,13 @@ class HashGeneratorService
             $invoiceId = $record->getInvoiceId();
             $chaining = $record->getChaining();
             // Fields order for "RegistroAlta" (submission)
+            // AEAT hash spec v0.1.2 §3: hashed values must match the XML content.
+            // FechaExpedicionFactura is d-m-Y in XML, so the canonical hash input
+            // uses the same fiscal representation (see InvoiceSerializer::formatDate).
             $fields = [
                 'issuerNif'         => $invoiceId->issuerNif,
                 'seriesNumber'      => $invoiceId->seriesNumber,
-                'issueDate'         => $invoiceId->getIssueDate(),
+                'issueDate'         => InvoiceSerializer::formatDate((string) $invoiceId->getIssueDate()),
                 'invoiceType'       => $record->invoiceType instanceof \BackedEnum ? $record->invoiceType->value : (string) $record->invoiceType,
                 'taxAmount'         => $record->taxAmount,
                 'totalAmount'       => $record->totalAmount,
@@ -73,10 +76,12 @@ class HashGeneratorService
             $invoiceId = $record->getInvoiceId();
             $chaining = $record->getChaining();
             // Fields order for "RegistroAnulacion" (cancellation)
+            // Same AEAT rule as RegistroAlta: FechaExpedicionFacturaAnulada
+            // is hashed in its fiscal d-m-Y representation.
             $fields = [
                 'issuerNif'         => $invoiceId->issuerNif,
                 'seriesNumber'      => $invoiceId->seriesNumber,
-                'issueDate'         => $invoiceId->getIssueDate(),
+                'issueDate'         => InvoiceSerializer::formatDate((string) $invoiceId->getIssueDate()),
                 'hash'              => $chaining && $chaining->getPreviousInvoice() ? $chaining->getPreviousInvoice()->hash : '',
                 'recordTimestamp'   => $record->recordTimestamp,
             ];
